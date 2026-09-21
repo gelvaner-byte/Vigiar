@@ -620,7 +620,7 @@ function Hoje({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onShare }) {
   };
 
   return (
-    <div className="vg-page">
+    <div className="vg-page vg-hoje">
       <div className="vg-hoje-head">
         <span className="vg-eyebrow">Painel</span>
         <h1 className="vg-h1">Hoje, {fmtDate(t)}</h1>
@@ -1568,6 +1568,41 @@ function Estilos() {
 .vg-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:60;
   background:var(--ink);color:#fff;padding:11px 16px;border-radius:12px;font-size:13px;font-weight:600;
   max-width:88%;text-align:center;box-shadow:0 8px 24px rgba(8,18,30,.4);animation:up .2s ease}
+
+/* ============ computador (tela larga) ============ */
+@media (min-width: 900px){
+  .vg-root{max-width:none;padding-left:220px}
+  .vg-top{padding:14px 32px}
+  .vg-aviso{padding:10px 32px}
+  .vg-nav{top:0;bottom:0;right:auto;width:220px;max-width:none;margin:0;flex-direction:column;gap:4px;
+    padding:88px 12px 16px;background:var(--ink);border-top:none;
+    background-image:radial-gradient(140% 60% at 0% 0%,rgba(14,99,214,.35),transparent 60%)}
+  .vg-navbtn{flex:0 0 auto;flex-direction:row;justify-content:flex-start;gap:12px;padding:12px 14px;
+    border-radius:11px;font-size:14px;color:#9fb6d4;cursor:pointer}
+  .vg-navbtn:hover{background:rgba(255,255,255,.06);color:#fff}
+  .vg-navbtn.on{background:rgba(14,99,214,.35);color:#fff}
+  .vg-main{padding-bottom:40px}
+  .vg-page{max-width:1240px;margin:0 auto;padding:28px 32px 16px}
+  .vg-h1{font-size:26px;margin-bottom:18px}
+  .vg-chips{margin:0;padding-left:0;padding-right:0;flex-wrap:wrap}
+  .vg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+  .vg-card{cursor:pointer;transition:box-shadow .15s,border-color .15s}
+  .vg-card:hover{border-color:#bcd0ea;box-shadow:0 6px 18px rgba(8,18,30,.08)}
+  .vg-hoje{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .vg-hoje > .vg-hoje-head,.vg-hoje > .vg-stats{grid-column:1/-1}
+  .vg-hoje > .vg-stats{margin-bottom:0;gap:14px}
+  .vg-hoje > .vg-secao{margin-bottom:0}
+  .vg-hoje > .vg-secao.perigo,.vg-hoje > .vg-secao.aviso{grid-column:1/-1}
+  .vg-stat{padding:18px 12px}
+  .vg-stat b{font-size:28px}
+  .vg-stat span{font-size:12px}
+  .vg-alerta,.vg-link,.vg-chip,.vg-btn,.vg-iconbtn,.vg-x,.vg-perfil,.vg-fab{cursor:pointer}
+  .vg-fab{right:32px;bottom:32px}
+  .vg-overlay{align-items:center;padding:24px}
+  .vg-sheet{max-width:720px;max-height:90vh;border-radius:22px}
+  .vg-modal{margin:0}
+  .vg-toast{bottom:32px}
+}
 `}</style>
   );
 }
