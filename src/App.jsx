@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LayoutDashboard, Receipt, Package, HandCoins, Boxes, LogOut, AlertTriangle } from 'lucide-react'
+import { LayoutDashboard, Receipt, Package, HandCoins, Boxes, LogOut, AlertTriangle, Download } from 'lucide-react'
 import Logo from './components/Logo'
 import Login from './components/Login'
 import Dashboard from './components/Dashboard'
@@ -60,6 +60,23 @@ export default function App() {
   const debitosReceber = useSupabaseList(TABLES.debitosReceber)
   const estoque = useSupabaseList(TABLES.estoque)
 
+  function handleExportBackup() {
+    const backup = {
+      exportadoEm: new Date().toISOString(),
+      despesasFixas: despesasFixas.items,
+      custosMercadorias: custosMercadorias.items,
+      debitosReceber: debitosReceber.items,
+      estoque: estoque.items,
+    }
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `vigiar-backup-${new Date().toISOString().slice(0, 10)}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (!isSupabaseConfigured) return <NotConfigured />
   if (authLoading) return null
   if (!session) return <Login />
@@ -77,14 +94,24 @@ export default function App() {
               <p className="text-xs text-slate-500">Gestão Financeira — Segurança Eletrônica</p>
             </div>
           </div>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
-            title="Sair"
-          >
-            <LogOut size={16} />
-            <span className="hidden sm:inline">Sair</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleExportBackup}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+              title="Baixar backup dos dados (.json)"
+            >
+              <Download size={16} />
+              <span className="hidden sm:inline">Backup</span>
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+              title="Sair"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
+          </div>
         </div>
         <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 pb-2 sm:px-6">
           {TABS.map((tab) => (
