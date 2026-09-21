@@ -110,6 +110,21 @@ apaga dados, mas deixa o login fora do ar até alguém reativar manualmente.
    Recovery). O plano gratuito é ótimo para começar, mas não tem backup automático.
 3. Baixe um backup manual (botão no app) antes de qualquer mudança grande nos dados.
 
+## App de Orçamentos e OS (`/orcamentos`)
+
+O mesmo projeto também publica o app de **orçamentos e ordens de serviço** em
+`https://SEU-LINK.vercel.app/orcamentos`. Ele usa o mesmo Supabase, a mesma senha, o mesmo
+keep-alive e a mesma Vercel.
+
+- Banco: rode [`supabase/orcamentos.sql`](supabase/orcamentos.sql) uma vez no SQL Editor.
+  Ele cria a tabela `orc_registros`. As exclusões são lógicas (`excluido = true`), então nada
+  é apagado de verdade e um registro excluído sem querer pode ser recuperado no painel do Supabase.
+- Backup: em **Perfil > Baixar backup** você baixa um `.json`, e em **Importar backup** traz os
+  dados de volta. A importação só adiciona o que falta e nunca sobrescreve.
+- Se a internet cair ou o banco falhar, aparece uma faixa vermelha fixa avisando que a
+  alteração **não** foi salva, com o botão "Tentar de novo".
+- Código: `orcamentos.html` + `src/orcamentos/`.
+
 ## Estrutura
 
 ```
