@@ -3,7 +3,7 @@ import { Plus, Trash2, Receipt } from 'lucide-react'
 import StatusBadge from './StatusBadge'
 import FilterBar from './FilterBar'
 import { CATEGORIAS_DESPESA_FIXA } from '../data/categories'
-import { formatBRL, formatDateBR, isSameMonth, isOverdue, todayISO } from '../utils/format'
+import { formatBRL, formatDateBR, isOverdue, matchesMonthFilter, todayISO } from '../utils/format'
 
 const emptyForm = {
   descricao: '',
@@ -30,7 +30,7 @@ export default function DespesasFixas({ items, addItem, removeItem, toggleStatus
       const matchesSearch =
         it.descricao.toLowerCase().includes(search.toLowerCase()) ||
         it.categoria.toLowerCase().includes(search.toLowerCase())
-      const matchesMonth = !month || it.vencimento?.startsWith(month)
+      const matchesMonth = matchesMonthFilter(it.vencimento, month)
       const matchesStatus = status === 'todos' || it.status === status
       return matchesSearch && matchesMonth && matchesStatus
     })

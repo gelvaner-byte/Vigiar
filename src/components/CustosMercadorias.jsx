@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus, Trash2, Package, AlertCircle } from 'lucide-react'
 import StatusBadge from './StatusBadge'
 import FilterBar from './FilterBar'
-import { formatBRL, formatDateBR, isOverdue, todayISO } from '../utils/format'
+import { formatBRL, formatDateBR, isOverdue, matchesMonthFilter, todayISO } from '../utils/format'
 
 const emptyForm = {
   fornecedor: '',
@@ -33,7 +33,7 @@ export default function CustosMercadorias({ items, addItem, removeItem, toggleSt
       const matchesSearch =
         it.fornecedor.toLowerCase().includes(search.toLowerCase()) ||
         it.descricao.toLowerCase().includes(search.toLowerCase())
-      const matchesMonth = !month || it.vencimento?.startsWith(month)
+      const matchesMonth = matchesMonthFilter(it.vencimento, month)
       const matchesStatus = status === 'todos' || it.status === status
       return matchesSearch && matchesMonth && matchesStatus
     })

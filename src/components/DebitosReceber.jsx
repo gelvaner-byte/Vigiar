@@ -3,7 +3,7 @@ import { Plus, Trash2, HandCoins } from 'lucide-react'
 import StatusBadge from './StatusBadge'
 import FilterBar from './FilterBar'
 import { CATEGORIAS_DEBITO_RECEBER } from '../data/categories'
-import { formatBRL, formatDateBR, isOverdue, todayISO } from '../utils/format'
+import { formatBRL, formatDateBR, isOverdue, matchesMonthFilter, todayISO } from '../utils/format'
 
 const emptyForm = {
   categoria: CATEGORIAS_DEBITO_RECEBER[0],
@@ -47,7 +47,7 @@ export default function DebitosReceber({ items, addItem, removeItem, toggleStatu
       const matchesSearch =
         it.cliente.toLowerCase().includes(search.toLowerCase()) ||
         it.categoria.toLowerCase().includes(search.toLowerCase())
-      const matchesMonth = !month || it.vencimento?.startsWith(month)
+      const matchesMonth = matchesMonthFilter(it.vencimento, month)
       const matchesStatus = status === 'todos' || it.status === status
       return matchesSearch && matchesMonth && matchesStatus
     })
