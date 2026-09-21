@@ -3,7 +3,7 @@ import {
   ShieldCheck, Bell, Home, FileText, Wrench, Plus, Trash2, Share2,
   Check, X, Clock, AlertTriangle, Phone, MapPin, Send, ChevronLeft,
   CalendarClock, CircleCheck, Pencil, ThumbsUp, ThumbsDown, Copy, Download,
-  UserRound, Users, Star, Upload, LogOut, RefreshCw
+  UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -70,19 +70,68 @@ const itemsTotal = (itens) =>
 // Valor da OS: o digitado no campo; se vazio (OS antigas), o total dos itens.
 const valorOS = (os) =>
   os.valor !== undefined && os.valor !== null && os.valor !== "" ? Number(os.valor) || 0 : itemsTotal(os.itens);
+
+// Materiais da OS. OS antigas (sem a lista) usam os itens do orçamento como ponto de partida.
+const materiaisOS = (os) =>
+  Array.isArray(os.materiais)
+    ? os.materiais
+    : (os.itens || [])
+        .filter((it) => String(it.descricao || "").trim())
+        .map((it) => ({ id: uid(), descricao: it.descricao, qtd: it.qtd ?? 1, unidade: it.unidade || "UN", separado: false }));
+
+// Separação das listas por data
+const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const rotuloData = (iso) => {
+  if (!iso) return "Sem data";
+  const t = todayStr();
+  if (iso === t) return "Hoje";
+  if (iso === addDaysStr(t, 1)) return "Amanhã";
+  if (iso === addDaysStr(t, -1)) return "Ontem";
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${DIAS_SEMANA[new Date(y, m - 1, d).getDay()]}, ${fmtDate(iso)}`;
+};
+const agruparPorData = (lista, campo) => {
+  const grupos = [];
+  for (const it of lista) {
+    const data = it[campo] || "";
+    const ult = grupos[grupos.length - 1];
+    if (ult && ult.data === data) ult.itens.push(it);
+    else grupos.push({ data, itens: [it] });
+  }
+  return grupos;
+};
 const nextNumero = (arr) =>
   String((arr.reduce((m, x) => Math.max(m, Number(x.numero) || 0), 0) + 1)).padStart(4, "0");
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 // Link do Google Maps (no celular abre direto o app do Maps)
 const CIDADE_PADRAO = "Belo Horizonte - MG";
-const mapsUrl = (endereco, bairro) => {
+const mapsBusca = (endereco, bairro) => {
   const end = String(endereco || "").trim();
   if (!end) return "";
   const partes = [end, bairro];
   if (!/belo horizonte|\bbh\b|\bmg\b/i.test(`${end} ${bairro || ""}`)) partes.push(CIDADE_PADRAO);
-  const q = partes.filter(Boolean).join(", ");
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  return partes.filter(Boolean).join(", ");
+};
+const mapsUrl = (endereco, bairro) => {
+  const q = mapsBusca(endereco, bairro);
+  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : "";
+};
+// Prévia do mapa: o Google não permite mais mapa embutido sem chave paga, então a prévia usa o
+// OpenStreetMap (gratuito). O clique no endereço continua abrindo o Google Maps.
+const cacheGeo = new Map();
+async function geocodificar(q) {
+  if (cacheGeo.has(q)) return cacheGeo.get(q);
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`);
+  if (!r.ok) throw new Error("geocode " + r.status);
+  const [hit] = await r.json();
+  const res = hit ? { lat: Number(hit.lat), lon: Number(hit.lon) } : null;
+  cacheGeo.set(q, res);
+  return res;
+}
+const osmEmbedUrl = ({ lat, lon }) => {
+  const d = 0.004;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - d},${lat - d},${lon + d},${lat + d}&layer=mapnik&marker=${lat},${lon}`;
 };
 
 async function copiar(texto) {
@@ -442,6 +491,7 @@ function App() {
       descricao: orc.descricaoServico || "",
       itens: orc.itens || [],
       valor: itemsTotal(orc.itens) || "",
+      materiais: materiaisOS({ itens: orc.itens }),
       dataServico,
       horaServico: "",
       status: "agendada",
@@ -755,27 +805,33 @@ function ListaOrcamentos({ orcamentos, onAbrir }) {
         <Vazio texto="Nenhum orçamento aqui ainda. Toque no + para agendar o primeiro." />
       ) : (
         <div className="vg-list">
-          {lista.map((o) => {
-            const atrasado = (o.status === "a_enviar" && o.prazoEnvio && o.prazoEnvio < t) ||
-              (o.status === "agendado" && o.dataVisita && o.dataVisita < t);
-            return (
-              <button key={o.id} className="vg-card" onClick={() => onAbrir(o)}>
-                <div className="vg-card-top">
-                  <span className="vg-num">Nº {o.numero}</span>
-                  <Badge st={ORC_STATUS[o.status]} />
-                </div>
-                <div className="vg-card-cli">{o.cliente || "Sem nome"}</div>
-                <div className="vg-card-meta">
-                  <span><CalendarClock size={13} /> {fmtDate(o.dataVisita)}</span>
-                  {itemsTotal(o.itens) > 0 && <span className="vg-card-val">{brl(itemsTotal(o.itens))}</span>}
-                </div>
-                <div className="vg-card-foot">
-                  {o.vendedor && <span className="vg-card-vend"><UserRound size={12} /> {o.vendedor}</span>}
-                  {atrasado && <span className="vg-card-warn"><AlertTriangle size={12} /> Atrasado</span>}
-                </div>
-              </button>
-            );
-          })}
+          {agruparPorData(lista, "dataVisita").map((g) => (
+            <React.Fragment key={g.data || "sem"}>
+              <GrupoData data={g.data} qtd={g.itens.length} />
+              {g.itens.map((o) => {
+                const atrasado = (o.status === "a_enviar" && o.prazoEnvio && o.prazoEnvio < t) ||
+                  (o.status === "agendado" && o.dataVisita && o.dataVisita < t);
+                return (
+                  <Card key={o.id} onClick={() => onAbrir(o)}>
+                    <div className="vg-card-top">
+                      <span className="vg-num">Nº {o.numero}{o.horaVisita ? ` · ${o.horaVisita}` : ""}</span>
+                      <Badge st={ORC_STATUS[o.status]} />
+                    </div>
+                    <div className="vg-card-cli">{o.cliente || "Sem nome"}</div>
+                    <LinkEndereco endereco={o.endereco} bairro={o.bairro} />
+                    <div className="vg-card-meta">
+                      <span><CalendarClock size={13} /> {fmtDate(o.dataVisita)}</span>
+                      {itemsTotal(o.itens) > 0 && <span className="vg-card-val">{brl(itemsTotal(o.itens))}</span>}
+                    </div>
+                    <div className="vg-card-foot">
+                      {o.vendedor && <span className="vg-card-vend"><UserRound size={12} /> {o.vendedor}</span>}
+                      {atrasado && <span className="vg-card-warn"><AlertTriangle size={12} /> Atrasado</span>}
+                    </div>
+                  </Card>
+                );
+              })}
+            </React.Fragment>
+          ))}
         </div>
       )}
     </div>
@@ -788,7 +844,10 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
   const filtros = [["agendada", "Agendadas"], ["concluida", "Concluídas"], ["todos", "Todas"]];
   const lista = useMemo(() => {
     const arr = filtro === "todos" ? ordens : ordens.filter((o) => o.status === filtro);
-    return [...arr].sort((a, b) => (a.dataServico || "").localeCompare(b.dataServico || ""));
+    // Agendadas: a mais próxima primeiro. Concluídas/todas: a mais recente primeiro.
+    const dir = filtro === "agendada" ? 1 : -1;
+    return [...arr].sort((a, b) =>
+      dir * ((a.dataServico || "").localeCompare(b.dataServico || "") || (a.horaServico || "99").localeCompare(b.horaServico || "99")));
   }, [ordens, filtro]);
 
   return (
@@ -804,18 +863,35 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
         <Vazio texto="Nenhuma ordem de serviço aqui. Aprove um orçamento para gerar uma, ou toque no +." />
       ) : (
         <div className="vg-list">
-          {lista.map((o) => (
-            <button key={o.id} className="vg-card" onClick={() => onAbrir(o)}>
-              <div className="vg-card-top">
-                <span className="vg-num">OS Nº {o.numero}</span>
-                <Badge st={OS_STATUS[o.status]} />
-              </div>
-              <div className="vg-card-cli">{o.cliente || "Sem nome"}</div>
-              <div className="vg-card-meta">
-                <span><CalendarClock size={13} /> {fmtDate(o.dataServico)}</span>
-                {valorOS(o) > 0 && <span className="vg-card-val">{brl(valorOS(o))}</span>}
-              </div>
-            </button>
+          {agruparPorData(lista, "dataServico").map((g) => (
+            <React.Fragment key={g.data || "sem"}>
+              <GrupoData data={g.data} qtd={g.itens.length} />
+              {g.itens.map((o) => {
+                const mats = materiaisOS(o);
+                return (
+                  <Card key={o.id} onClick={() => onAbrir(o)}>
+                    <div className="vg-card-top">
+                      <span className="vg-num">OS Nº {o.numero}{o.horaServico ? ` · ${o.horaServico}` : ""}</span>
+                      <Badge st={OS_STATUS[o.status]} />
+                    </div>
+                    <div className="vg-card-cli">{o.cliente || "Sem nome"}</div>
+                    <LinkEndereco endereco={o.endereco} bairro={o.bairro} />
+                    <div className="vg-card-meta">
+                      <span><CalendarClock size={13} /> {fmtDate(o.dataServico)}</span>
+                      {valorOS(o) > 0 && <span className="vg-card-val">{brl(valorOS(o))}</span>}
+                    </div>
+                    {mats.length > 0 && (
+                      <div className="vg-card-foot">
+                        <span className="vg-card-mat">
+                          <Package size={12} /> {mats.length} materia{mats.length === 1 ? "l" : "is"}
+                          {" · "}{mats.filter((m) => m.separado).length} separado{mats.filter((m) => m.separado).length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </React.Fragment>
           ))}
         </div>
       )}
@@ -908,7 +984,7 @@ function SheetOrcamento({ inicial, orcamentos, vendedoras = [], vendedorPadrao =
       <Campo label="Bairro">
         <input className="vg-in" value={o.bairro || ""} onChange={(e) => set("bairro", e.target.value)} placeholder="Ex.: Santa Amélia" />
       </Campo>
-      <BotaoMapa url={mapsUrl(o.endereco, o.bairro)} />
+      <EnderecoMapa endereco={o.endereco} bairro={o.bairro} />
       <Campo label="O que o cliente quer">
         <input className="vg-in" value={o.descricaoServico} onChange={(e) => set("descricaoServico", e.target.value)} placeholder="Ex.: 4 câmeras + alarme + portão" />
       </Campo>
@@ -1025,15 +1101,22 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
       ? {
           id: uid(), numero: nextNumero(ordens), cliente: "", telefone: "",
           endereco: "", bairro: "", descricao: "", itens: [], dataServico: todayStr(), horaServico: "",
-          status: "agendada", observacoes: "", valor: "", criadoEm: todayStr(),
+          status: "agendada", observacoes: "", valor: "", materiais: [], criadoEm: todayStr(),
         }
       : {
           ...inicial,
           itens: inicial.itens ? [...inicial.itens] : [],
+          materiais: materiaisOS(inicial).map((m) => ({ ...m })),
           valor: inicial.valor != null && inicial.valor !== "" ? inicial.valor : (itemsTotal(inicial.itens) || ""),
         }
   );
   const set = (k, v) => setO((p) => ({ ...p, [k]: v }));
+  const setMat = (i, k, v) =>
+    setO((p) => ({ ...p, materiais: p.materiais.map((m, idx) => (idx === i ? { ...m, [k]: v } : m)) }));
+  const addMat = () =>
+    setO((p) => ({ ...p, materiais: [...p.materiais, { id: uid(), descricao: "", qtd: 1, unidade: "UN", separado: false }] }));
+  const delMat = (i) => setO((p) => ({ ...p, materiais: p.materiais.filter((_, idx) => idx !== i) }));
+  const nSeparados = o.materiais.filter((m) => m.separado).length;
 
   const compartilhar = () => {
     let txt = `*VIGIAR — Ordem de Serviço Nº ${o.numero}*\n\n`;
@@ -1043,9 +1126,10 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
     txt += `Data: ${fmtDate(o.dataServico)}\n`;
     if (valorOS(o) > 0) txt += `Valor: ${brl(valorOS(o))}\n`;
     if (o.descricao) txt += `\nServiço: ${o.descricao}\n`;
-    if ((o.itens || []).length) {
-      txt += `\nItens:\n`;
-      o.itens.forEach((it) => { txt += `• ${it.qtd}x ${it.descricao || "item"}\n`; });
+    const mats = o.materiais.filter((m) => String(m.descricao || "").trim());
+    if (mats.length) {
+      txt += `\n*Materiais:*\n`;
+      mats.forEach((m) => { txt += `${m.separado ? "✅" : "⬜"} ${m.qtd || 1} ${m.unidade || "UN"} — ${m.descricao}\n`; });
     }
     if (o.observacoes) txt += `\nObs.: ${o.observacoes}`;
     onShare({ titulo: `OS Nº ${o.numero}`, texto: txt.trim() });
@@ -1082,10 +1166,31 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
       <Campo label="Bairro">
         <input className="vg-in" value={o.bairro || ""} onChange={(e) => set("bairro", e.target.value)} placeholder="Ex.: Santa Amélia" />
       </Campo>
-      <BotaoMapa url={mapsUrl(o.endereco, o.bairro)} />
+      <EnderecoMapa endereco={o.endereco} bairro={o.bairro} />
       <Campo label="Serviço a executar">
         <textarea className="vg-in vg-ta" rows={2} value={o.descricao} onChange={(e) => set("descricao", e.target.value)} placeholder="Ex.: Instalar 4 câmeras, configurar DVR e app no celular" />
       </Campo>
+
+      {/* materiais */}
+      <div className="vg-itens-head">
+        <span><Package size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />Materiais{o.materiais.length > 0 ? ` (${nSeparados}/${o.materiais.length} separados)` : ""}</span>
+        <button className="vg-link" onClick={addMat}><Plus size={14} /> Adicionar</button>
+      </div>
+      {o.materiais.length === 0 && (
+        <div className="vg-itens-vazio">Liste o material que será usado neste serviço (cabos, conectores, fontes…). Marque ✓ quando estiver separado.</div>
+      )}
+      {o.materiais.map((m, i) => (
+        <div key={m.id || i} className={"vg-mat" + (m.separado ? " ok" : "")}>
+          <button className="vg-mat-check" onClick={() => setMat(i, "separado", !m.separado)}
+            aria-label={m.separado ? "Desmarcar separado" : "Marcar como separado"}>
+            {m.separado && <Check size={16} />}
+          </button>
+          <input className="vg-in vg-mat-desc" value={m.descricao} onChange={(e) => setMat(i, "descricao", e.target.value)} placeholder="Material" />
+          <input type="number" min="0" step="any" className="vg-in vg-mat-qtd" value={m.qtd} onChange={(e) => setMat(i, "qtd", e.target.value)} aria-label="Quantidade" />
+          <input className="vg-in vg-mat-un" value={m.unidade ?? "UN"} onChange={(e) => setMat(i, "unidade", e.target.value)} placeholder="UN" aria-label="Unidade" />
+          <button className="vg-del" onClick={() => delMat(i)} aria-label="Remover material"><Trash2 size={16} /></button>
+        </div>
+      ))}
       <Campo label="Observações">
         <textarea className="vg-in vg-ta" rows={2} value={o.observacoes} onChange={(e) => set("observacoes", e.target.value)} placeholder="Material, acesso ao local, contato no dia…" />
       </Campo>
@@ -1331,12 +1436,68 @@ function ItemAlerta({ titulo, sub, onClick, alerta, aviso, mapa }) {
     </div>
   );
 }
-function BotaoMapa({ url }) {
+// Endereço clicável: tocar abre o Google Maps (no celular, o app do Maps).
+function LinkEndereco({ endereco, bairro }) {
+  const url = mapsUrl(endereco, bairro);
   if (!url) return null;
   return (
-    <a className="vg-mapa-btn" href={url} target="_blank" rel="noopener noreferrer">
-      <MapPin size={16} /> Abrir no Google Maps
+    <a className="vg-end-link" href={url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+      <MapPin size={13} /> <span>{[endereco, bairro].filter(Boolean).join(" - ")}</span>
     </a>
+  );
+}
+// Mapa que aparece sozinho enquanto o endereço é digitado + endereço clicável.
+function EnderecoMapa({ endereco, bairro }) {
+  const busca = mapsBusca(endereco, bairro);
+  const [geo, setGeo] = useState({ estado: "vazio" }); // vazio | buscando | ok | nao_achou | erro
+  useEffect(() => {
+    if (!busca) { setGeo({ estado: "vazio" }); return; }
+    let vivo = true;
+    setGeo((g) => (g.estado === "ok" ? g : { estado: "buscando" }));
+    const tm = setTimeout(async () => { // espera parar de digitar
+      try {
+        const p = await geocodificar(busca);
+        if (vivo) setGeo(p ? { estado: "ok", ponto: p } : { estado: "nao_achou" });
+      } catch {
+        if (vivo) setGeo({ estado: "erro" });
+      }
+    }, 900);
+    return () => { vivo = false; clearTimeout(tm); };
+  }, [busca]);
+  if (!busca) return null;
+  return (
+    <div className="vg-endmapa">
+      <a className="vg-endmapa-link" href={mapsUrl(endereco, bairro)} target="_blank" rel="noopener noreferrer">
+        <MapPin size={16} />
+        <span>{busca}</span>
+        <ExternalLink size={14} />
+      </a>
+      {geo.estado === "ok" && (
+        <iframe className="vg-endmapa-frame" title="Mapa do endereço" src={osmEmbedUrl(geo.ponto)} loading="lazy" />
+      )}
+      {geo.estado === "buscando" && <div className="vg-endmapa-msg">Procurando o endereço no mapa…</div>}
+      {geo.estado === "nao_achou" && (
+        <div className="vg-endmapa-msg aviso">Não achei esse endereço no mapa de prévia. Confira a rua e o número. O Google Maps costuma achar mesmo assim.</div>
+      )}
+      <span className="vg-endmapa-dica">Toque no endereço acima para abrir no Google Maps</span>
+    </div>
+  );
+}
+function Card({ onClick, children }) {
+  return (
+    <div className="vg-card" role="button" tabIndex={0} onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter") onClick(); }}>
+      {children}
+    </div>
+  );
+}
+function GrupoData({ data, qtd }) {
+  const passado = data && data < todayStr();
+  return (
+    <div className={"vg-grupo" + (data === todayStr() ? " hoje" : "") + (passado ? " passado" : "")}>
+      <span>{rotuloData(data)}</span>
+      <em>{qtd}</em>
+    </div>
   );
 }
 function Vazio({ texto }) { return <div className="vg-vazio">{texto}</div>; }
@@ -1422,6 +1583,37 @@ function Estilos() {
 .vg-alerta-txt strong{font-size:14px}
 .vg-alerta-txt span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vg-chev{transform:rotate(180deg);color:#c2ccda;flex-shrink:0}
+.vg-grupo{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:10px 2px 0;font-size:13px;font-weight:800;color:var(--ink)}
+.vg-grupo:first-child{margin-top:0}
+.vg-grupo::after{content:"";flex:1;height:1px;background:var(--line)}
+.vg-grupo em{font-style:normal;font-size:11px;font-weight:700;color:var(--muted);background:#e2e8f0;border-radius:999px;padding:2px 8px;order:2}
+.vg-grupo span{order:1}
+.vg-grupo::after{order:3}
+.vg-grupo.hoje span{color:var(--brand)}
+.vg-grupo.passado span{color:var(--muted)}
+.vg-card{cursor:pointer}
+.vg-card:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.vg-end-link{display:inline-flex;align-items:flex-start;gap:5px;font-size:13px;color:var(--brand);text-decoration:none;font-weight:600;line-height:1.35;align-self:flex-start;max-width:100%}
+.vg-end-link svg{flex-shrink:0;margin-top:2px}
+.vg-end-link span{text-decoration:underline;text-underline-offset:2px;text-decoration-color:rgba(14,99,214,.35)}
+.vg-card-mat{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:#5b6877;background:#eef2f7;padding:3px 9px;border-radius:999px}
+.vg-endmapa{margin:-2px 0 14px;background:var(--surface);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.vg-endmapa-link{display:flex;align-items:center;gap:8px;padding:11px 12px;color:var(--brand);font-weight:700;font-size:14px;text-decoration:none;background:#e4eefb}
+.vg-endmapa-link span{flex:1;text-decoration:underline;text-underline-offset:2px}
+.vg-endmapa-frame{display:block;width:100%;height:200px;border:0}
+.vg-endmapa-msg{padding:14px 12px;font-size:13px;color:var(--muted);border-top:1px solid var(--line)}
+.vg-endmapa-msg.aviso{color:var(--warn);background:var(--warn-bg)}
+.vg-endmapa-dica{display:block;font-size:11px;color:var(--muted);padding:7px 12px}
+.vg-mat{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:7px;margin-bottom:7px}
+.vg-mat.ok{background:#f0faf4;border-color:#bfe5cd}
+.vg-mat.ok .vg-mat-desc{text-decoration:line-through;color:var(--muted)}
+.vg-mat-check{flex:0 0 32px;width:32px;height:32px;border-radius:9px;border:2px solid #cbd5e1;background:#fff;display:grid;place-items:center;color:#fff;cursor:pointer;padding:0}
+.vg-mat.ok .vg-mat-check{background:var(--ok);border-color:var(--ok)}
+.vg-mat .vg-in{padding:9px 10px;font-size:14px}
+.vg-mat-desc{flex:1;min-width:0}
+.vg-mat-qtd{flex:0 0 62px;width:62px}
+.vg-mat-un{flex:0 0 52px;width:52px}
+.vg-mat .vg-del{width:38px;height:38px;flex:0 0 38px}
 .vg-aviso{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fef2f2;color:#b91c1c;border-bottom:1px solid #f3c7c7;padding:10px 16px;font-size:13px;font-weight:600;line-height:1.4}
 .vg-aviso span{flex:1;min-width:180px}
 .vg-aviso button{display:inline-flex;align-items:center;gap:5px;border:none;background:#b91c1c;color:#fff;border-radius:9px;padding:7px 11px;font-size:12px;font-weight:700;font-family:inherit}
