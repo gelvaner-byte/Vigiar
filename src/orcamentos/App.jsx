@@ -3,7 +3,7 @@ import {
   ShieldCheck, Bell, Home, FileText, Wrench, Plus, Trash2, Share2,
   Check, X, Clock, AlertTriangle, Phone, MapPin, Send, ChevronLeft,
   CalendarClock, CircleCheck, Pencil, ThumbsUp, ThumbsDown, Copy, Download,
-  UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink
+  UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink, ListChecks, ChevronRight
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -478,6 +478,34 @@ function App() {
   };
   const excluirOs = (id) => { updOs(ordens.filter((x) => x.id !== id)); setOsAberta(null); };
 
+  // Agenda: marcar/desmarcar "fui no cliente".
+  // Visita de orçamento: marcar = "visita feita" (vai para Montar/enviar com prazo de 2 dias).
+  // Serviço: marcar = OS concluída.
+  const toggleTarefa = (tipo, item) => {
+    const agora = new Date().toISOString();
+    if (tipo === "visita") {
+      const feito = tarefaFeita("visita", item);
+      const novo = feito
+        ? {
+            ...item,
+            visitaFeitaEm: "",
+            ...(item.status === "a_enviar" && item.visitaFeitaEm ? { status: "agendado", prazoEnvio: "" } : {}),
+          }
+        : {
+            ...item,
+            visitaFeitaEm: agora,
+            ...(item.status === "agendado" ? { status: "a_enviar", prazoEnvio: item.prazoEnvio || addDaysStr(todayStr(), 2) } : {}),
+          };
+      updOrc(orcamentos.map((x) => (x.id === item.id ? novo : x)));
+      if (!feito) setToast(`Visita feita ✓ Orçamento Nº ${item.numero} foi para "Montar / enviar".`);
+    } else {
+      const feito = tarefaFeita("servico", item);
+      const novo = { ...item, status: feito ? "agendada" : "concluida", concluidaEm: feito ? "" : agora };
+      updOs(ordens.map((x) => (x.id === item.id ? novo : x)));
+      if (!feito) setToast(`Serviço concluído ✓ OS Nº ${item.numero}.`);
+    }
+  };
+
   const gerarOSdeOrcamento = (orc, dataServico) => {
     const os = {
       id: uid(),
@@ -573,6 +601,16 @@ function App() {
             onShare={setShare}
           />
         )}
+        {view === "agenda" && (
+          <Agenda
+            orcamentos={orcamentos}
+            ordens={ordens}
+            onAbrirOrc={setOrcAberto}
+            onAbrirOs={setOsAberta}
+            onToggle={toggleTarefa}
+            onShare={setShare}
+          />
+        )}
         {view === "orcamentos" && (
           <ListaOrcamentos orcamentos={orcamentos} onAbrir={setOrcAberto} />
         )}
@@ -595,6 +633,7 @@ function App() {
 
       <nav className="vg-nav">
         <NavBtn ativo={view === "hoje"} onClick={() => setView("hoje")} icon={<Home size={20} />} label="Hoje" />
+        <NavBtn ativo={view === "agenda"} onClick={() => setView("agenda")} icon={<ListChecks size={20} />} label="Agenda" />
         <NavBtn ativo={view === "orcamentos"} onClick={() => setView("orcamentos")} icon={<FileText size={20} />} label="Orçamentos" />
         <NavBtn ativo={view === "servicos"} onClick={() => setView("servicos")} icon={<Wrench size={20} />} label="Serviços" />
       </nav>
@@ -736,6 +775,140 @@ function Hoje({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onShare }) {
           ))
         )}
       </Secao>
+    </div>
+  );
+}
+
+/* ============ AGENDA do dia (visitas + serviços, por horário) ============ */
+function tarefaFeita(tipo, it) {
+  return tipo === "visita" ? Boolean(it.visitaFeitaEm) || it.status !== "agendado" : it.status === "concluida";
+}
+function montarTarefas(orcamentos, ordens, dia) {
+  const visitas = orcamentos
+    .filter((o) => o.dataVisita === dia)
+    .map((o) => ({ tipo: "visita", hora: o.horaVisita || "", item: o }));
+  const servicos = ordens
+    .filter((o) => o.dataServico === dia && o.status !== "cancelada")
+    .map((o) => ({ tipo: "servico", hora: o.horaServico || "", item: o }));
+  return [...visitas, ...servicos].sort((a, b) => (a.hora || "99:99").localeCompare(b.hora || "99:99"));
+}
+
+function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare }) {
+  const t = todayStr();
+  const [dia, setDia] = useState(t);
+  const tarefas = useMemo(() => montarTarefas(orcamentos, ordens, dia), [orcamentos, ordens, dia]);
+  const atrasadas = useMemo(() => {
+    if (dia !== t) return [];
+    const v = orcamentos
+      .filter((o) => o.status === "agendado" && !o.visitaFeitaEm && o.dataVisita && o.dataVisita < t)
+      .map((o) => ({ tipo: "visita", hora: o.horaVisita || "", data: o.dataVisita, item: o }));
+    const s = ordens
+      .filter((o) => o.status === "agendada" && o.dataServico && o.dataServico < t)
+      .map((o) => ({ tipo: "servico", hora: o.horaServico || "", data: o.dataServico, item: o }));
+    return [...v, ...s].sort((a, b) => (a.data + a.hora).localeCompare(b.data + b.hora));
+  }, [orcamentos, ordens, dia, t]);
+
+  const feitas = tarefas.filter((x) => tarefaFeita(x.tipo, x.item)).length;
+  const pct = tarefas.length ? Math.round((feitas / tarefas.length) * 100) : 0;
+
+  const enviarAgenda = () => {
+    let txt = `*VIGIAR — Agenda de ${fmtDate(dia)}*\n\n`;
+    tarefas.forEach((x, i) => {
+      const it = x.item;
+      txt += `${i + 1}) ${x.hora || "Sem horário"} — ${x.tipo === "visita" ? `Visita orçamento Nº ${it.numero}` : `Serviço OS Nº ${it.numero}`}\n`;
+      txt += `   👤 ${it.cliente || "Sem nome"}${it.telefone ? ` · 📞 ${it.telefone}` : ""}\n`;
+      const end = [it.endereco, it.bairro].filter(Boolean).join(" - ");
+      if (end) txt += `   📍 ${end}\n   🗺️ ${mapsUrl(it.endereco, it.bairro)}\n`;
+      const desc = x.tipo === "visita" ? it.descricaoServico : it.descricao;
+      if (desc) txt += `   🔧 ${desc}\n`;
+      txt += "\n";
+    });
+    onShare({ titulo: `Agenda de ${fmtDate(dia)} (${tarefas.length})`, texto: txt.trim() });
+  };
+
+  const abrir = (x) => (x.tipo === "visita" ? onAbrirOrc(x.item) : onAbrirOs(x.item));
+
+  return (
+    <div className="vg-page vg-agenda">
+      <span className="vg-eyebrow">Agenda</span>
+      <h1 className="vg-h1">O que fazer no dia</h1>
+
+      <div className="vg-dia-nav">
+        <button className="vg-x" onClick={() => setDia(addDaysStr(dia, -1))} aria-label="Dia anterior"><ChevronLeft size={20} /></button>
+        <div className="vg-dia-centro">
+          <strong>{rotuloData(dia)}</strong>
+          <input type="date" className="vg-dia-input" value={dia} onChange={(e) => e.target.value && setDia(e.target.value)} aria-label="Escolher dia" />
+        </div>
+        <button className="vg-x" onClick={() => setDia(addDaysStr(dia, 1))} aria-label="Próximo dia"><ChevronRight size={20} /></button>
+      </div>
+      {dia !== t && <button className="vg-link vg-dia-hoje" onClick={() => setDia(t)}>Voltar para hoje</button>}
+
+      {tarefas.length > 0 && (
+        <div className="vg-progresso">
+          <div className="vg-progresso-txt">
+            <span><b>{feitas}</b> de <b>{tarefas.length}</b> feitas</span>
+            <button className="vg-link" onClick={enviarAgenda}><Share2 size={14} /> Enviar agenda</button>
+          </div>
+          <div className="vg-progresso-barra"><i style={{ width: `${pct}%` }} /></div>
+        </div>
+      )}
+
+      {atrasadas.length > 0 && (
+        <Secao titulo={`Ficaram de dias anteriores (${atrasadas.length})`} perigo icon={<AlertTriangle size={16} />}>
+          {atrasadas.map((x) => (
+            <Tarefa key={x.tipo + x.item.id} x={x} dataExtra={x.data} onAbrir={() => abrir(x)} onToggle={() => onToggle(x.tipo, x.item)} />
+          ))}
+        </Secao>
+      )}
+
+      {tarefas.length === 0 ? (
+        <Vazio texto={`Nada marcado para ${dia === t ? "hoje" : fmtDate(dia)}. Visitas de orçamento e serviços com essa data aparecem aqui em ordem de horário.`} />
+      ) : (
+        <div className="vg-tarefas">
+          {tarefas.map((x) => (
+            <Tarefa key={x.tipo + x.item.id} x={x} onAbrir={() => abrir(x)} onToggle={() => onToggle(x.tipo, x.item)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Tarefa({ x, dataExtra, onAbrir, onToggle }) {
+  const it = x.item;
+  const feito = tarefaFeita(x.tipo, it);
+  const visita = x.tipo === "visita";
+  const desc = visita ? it.descricaoServico : it.descricao;
+  return (
+    <div className={"vg-tarefa" + (feito ? " feito" : "")}>
+      <button className="vg-tarefa-check" onClick={onToggle}
+        aria-label={feito ? "Desmarcar" : visita ? "Marcar visita como feita" : "Marcar serviço como concluído"}>
+        {feito && <Check size={18} />}
+      </button>
+      <div className="vg-tarefa-hora">
+        <b>{x.hora || "—"}</b>
+        {dataExtra && <span>{fmtDate(dataExtra).slice(0, 5)}</span>}
+      </div>
+      <div className="vg-tarefa-corpo" role="button" tabIndex={0} onClick={onAbrir} onKeyDown={(e) => { if (e.key === "Enter") onAbrir(); }}>
+        <span className={"vg-tarefa-tipo " + (visita ? "visita" : "servico")}>
+          {visita ? <><FileText size={11} /> Visita · Orç. Nº {it.numero}</> : <><Wrench size={11} /> Serviço · OS Nº {it.numero}</>}
+        </span>
+        <strong className="vg-tarefa-cli">{it.cliente || "Sem nome"}</strong>
+        {desc && <span className="vg-tarefa-desc">{desc}</span>}
+        <div className="vg-tarefa-links">
+          <LinkEndereco endereco={it.endereco} bairro={it.bairro} />
+          {it.telefone && (
+            <a className="vg-end-link" href={`tel:${String(it.telefone).replace(/[^\d+]/g, "")}`} onClick={(e) => e.stopPropagation()}>
+              <Phone size={13} /> <span>{it.telefone}</span>
+            </a>
+          )}
+        </div>
+        {feito && (
+          <span className="vg-tarefa-ok">
+            {visita ? "✓ Visita feita" : "✓ Serviço concluído"}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -1583,6 +1756,35 @@ function Estilos() {
 .vg-alerta-txt strong{font-size:14px}
 .vg-alerta-txt span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vg-chev{transform:rotate(180deg);color:#c2ccda;flex-shrink:0}
+.vg-dia-nav{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px}
+.vg-dia-nav .vg-x{width:40px;height:40px;cursor:pointer}
+.vg-dia-centro{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+.vg-dia-centro strong{font-size:16px}
+.vg-dia-input{border:none;background:none;font-family:inherit;font-size:12px;color:var(--muted);text-align:center;cursor:pointer}
+.vg-dia-hoje{margin:6px auto 0;display:flex}
+.vg-progresso{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:12px 0 14px}
+.vg-progresso-txt{display:flex;align-items:center;justify-content:space-between;font-size:14px;margin-bottom:9px}
+.vg-progresso-barra{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden}
+.vg-progresso-barra i{display:block;height:100%;background:var(--ok);border-radius:99px;transition:width .3s}
+.vg-tarefas{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+.vg-progresso + .vg-tarefas,.vg-progresso + .vg-secao{margin-top:0}
+.vg-tarefa{display:flex;align-items:flex-start;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:7px}
+.vg-tarefas .vg-tarefa{margin-top:0}
+.vg-tarefa.feito{background:#f3faf6;border-color:#cbe9d7}
+.vg-tarefa.feito .vg-tarefa-cli{text-decoration:line-through;color:var(--muted)}
+.vg-tarefa-check{flex:0 0 34px;width:34px;height:34px;border-radius:10px;border:2px solid #cbd5e1;background:#fff;display:grid;place-items:center;color:#fff;cursor:pointer;padding:0;margin-top:2px}
+.vg-tarefa.feito .vg-tarefa-check{background:var(--ok);border-color:var(--ok)}
+.vg-tarefa-hora{flex:0 0 48px;display:flex;flex-direction:column;align-items:center;padding-top:6px}
+.vg-tarefa-hora b{font-size:15px}
+.vg-tarefa-hora span{font-size:11px;color:var(--alert);font-weight:700}
+.vg-tarefa-corpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;cursor:pointer}
+.vg-tarefa-tipo{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
+.vg-tarefa-tipo.visita{background:#e4eefb;color:#0e63d6}
+.vg-tarefa-tipo.servico{background:#fdeccc;color:#a85a04}
+.vg-tarefa-cli{font-size:15px}
+.vg-tarefa-desc{font-size:13px;color:var(--muted);line-height:1.4}
+.vg-tarefa-links{display:flex;flex-wrap:wrap;gap:4px 14px}
+.vg-tarefa-ok{font-size:12px;font-weight:700;color:var(--ok)}
 .vg-grupo{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin:10px 2px 0;font-size:13px;font-weight:800;color:var(--ink)}
 .vg-grupo:first-child{margin-top:0}
 .vg-grupo::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -1796,6 +1998,7 @@ function Estilos() {
   .vg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
   .vg-card{cursor:pointer;transition:box-shadow .15s,border-color .15s}
   .vg-card:hover{border-color:#bcd0ea;box-shadow:0 6px 18px rgba(8,18,30,.08)}
+  .vg-agenda{max-width:880px}
   .vg-hoje{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
   .vg-hoje > .vg-hoje-head,.vg-hoje > .vg-stats{grid-column:1/-1}
   .vg-hoje > .vg-stats{margin-bottom:0;gap:14px}
