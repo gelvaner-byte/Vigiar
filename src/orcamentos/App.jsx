@@ -67,6 +67,9 @@ const brl = (v) =>
   (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const itemsTotal = (itens) =>
   (itens || []).reduce((s, i) => s + (Number(i.qtd) || 0) * (Number(i.valor) || 0), 0);
+// Valor da OS: o digitado no campo; se vazio (OS antigas), o total dos itens.
+const valorOS = (os) =>
+  os.valor !== undefined && os.valor !== null && os.valor !== "" ? Number(os.valor) || 0 : itemsTotal(os.itens);
 const nextNumero = (arr) =>
   String((arr.reduce((m, x) => Math.max(m, Number(x.numero) || 0), 0) + 1)).padStart(4, "0");
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -438,6 +441,7 @@ function App() {
       bairro: orc.bairro || "",
       descricao: orc.descricaoServico || "",
       itens: orc.itens || [],
+      valor: itemsTotal(orc.itens) || "",
       dataServico,
       horaServico: "",
       status: "agendada",
@@ -614,6 +618,7 @@ function Hoje({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onShare }) {
       if (end) txt += `   📍 ${end}\n   🗺️ ${mapsUrl(o.endereco, o.bairro)}\n`;
       if (o.telefone) txt += `   📞 ${o.telefone}\n`;
       if (o.descricao) txt += `   🔧 ${o.descricao}\n`;
+      if (valorOS(o) > 0) txt += `   💰 ${brl(valorOS(o))}\n`;
       txt += "\n";
     });
     onShare({ titulo: `OS do dia (${osHoje.length})`, texto: txt.trim() });
@@ -808,7 +813,7 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
               <div className="vg-card-cli">{o.cliente || "Sem nome"}</div>
               <div className="vg-card-meta">
                 <span><CalendarClock size={13} /> {fmtDate(o.dataServico)}</span>
-                {itemsTotal(o.itens) > 0 && <span className="vg-card-val">{brl(itemsTotal(o.itens))}</span>}
+                {valorOS(o) > 0 && <span className="vg-card-val">{brl(valorOS(o))}</span>}
               </div>
             </button>
           ))}
@@ -1020,9 +1025,13 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
       ? {
           id: uid(), numero: nextNumero(ordens), cliente: "", telefone: "",
           endereco: "", bairro: "", descricao: "", itens: [], dataServico: todayStr(), horaServico: "",
-          status: "agendada", observacoes: "", criadoEm: todayStr(),
+          status: "agendada", observacoes: "", valor: "", criadoEm: todayStr(),
         }
-      : { ...inicial, itens: inicial.itens ? [...inicial.itens] : [] }
+      : {
+          ...inicial,
+          itens: inicial.itens ? [...inicial.itens] : [],
+          valor: inicial.valor != null && inicial.valor !== "" ? inicial.valor : (itemsTotal(inicial.itens) || ""),
+        }
   );
   const set = (k, v) => setO((p) => ({ ...p, [k]: v }));
 
@@ -1032,6 +1041,7 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
     if (o.telefone) txt += `Telefone: ${o.telefone}\n`;
     if (o.endereco) txt += `Endereço: ${[o.endereco, o.bairro].filter(Boolean).join(" - ")}\n🗺️ ${mapsUrl(o.endereco, o.bairro)}\n`;
     txt += `Data: ${fmtDate(o.dataServico)}\n`;
+    if (valorOS(o) > 0) txt += `Valor: ${brl(valorOS(o))}\n`;
     if (o.descricao) txt += `\nServiço: ${o.descricao}\n`;
     if ((o.itens || []).length) {
       txt += `\nItens:\n`;
@@ -1057,9 +1067,15 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
           <input type="date" className="vg-in" value={o.dataServico} onChange={(e) => set("dataServico", e.target.value)} />
         </Campo>
       </div>
-      <Campo label="Horário do serviço" icon={<Clock size={14} />}>
-        <input type="time" className="vg-in" value={o.horaServico || ""} onChange={(e) => set("horaServico", e.target.value)} />
-      </Campo>
+      <div className="vg-row2">
+        <Campo label="Horário do serviço" icon={<Clock size={14} />}>
+          <input type="time" className="vg-in" value={o.horaServico || ""} onChange={(e) => set("horaServico", e.target.value)} />
+        </Campo>
+        <Campo label="Valor do serviço (R$)">
+          <input type="number" min="0" step="0.01" inputMode="decimal" className="vg-in" value={o.valor ?? ""}
+            onChange={(e) => set("valor", e.target.value)} placeholder="0,00" />
+        </Campo>
+      </div>
       <Campo label="Endereço — rua e nº" icon={<MapPin size={14} />}>
         <input className="vg-in" value={o.endereco} onChange={(e) => set("endereco", e.target.value)} placeholder="Ex.: Rua das Flores, 100" />
       </Campo>
