@@ -86,6 +86,30 @@ Abra `http://localhost:5173`, digite a senha criada no passo 3 e pronto.
 5. (Opcional, depois) Em **Project Settings** > **Domains** na Vercel, você pode
    apontar um domínio próprio (ex: `financeiro.suaempresa.com.br`) para esse link.
 
+## Continuidade — não perder dados nem acesso
+
+Este app roda no plano **gratuito** do Supabase, que **pausa o projeto
+automaticamente após dias sem uso** (isso já aconteceu uma vez). Pausar não
+apaga dados, mas deixa o login fora do ar até alguém reativar manualmente.
+
+**Já mitigado neste projeto:**
+- `api/keepalive.js` + `vercel.json` fazem a Vercel "bater" no Supabase todo dia
+  de madrugada, mantendo o projeto sempre ativo — não deve pausar de novo sozinho.
+- Botão **"Backup"** no topo do app (ao lado de "Sair") baixa um `.json` com todos
+  os dados cadastrados nas 4 abas, na hora que você quiser. Recomendado baixar de
+  vez em quando e guardar num lugar seguro (Google Drive, e-mail para você mesmo, etc.).
+
+**Recomendado, já que é uso da empresa:**
+1. **Guarde os logins em um lugar seguro** (gerenciador de senhas, ou anotado em
+   local confiável): login da sua conta Supabase, login da conta Vercel, login do
+   GitHub, e a senha de acesso do próprio app Vigiar. Se perder o acesso à conta
+   Supabase, ninguém consegue mais gerenciar os dados.
+2. Considere o **plano Pro do Supabase** (pago, ~US$25/mês) se o negócio depender
+   deste sistema no dia a dia: remove o auto-pause de vez, adiciona backups diários
+   automáticos e permite restaurar para qualquer ponto no tempo (Point-in-Time
+   Recovery). O plano gratuito é ótimo para começar, mas não tem backup automático.
+3. Baixe um backup manual (botão no app) antes de qualquer mudança grande nos dados.
+
 ## Estrutura
 
 ```
@@ -113,6 +137,9 @@ src/
   index.css
 supabase/
   schema.sql                  # Script para criar as tabelas + segurança + realtime
+api/
+  keepalive.js                 # Função da Vercel chamada pelo cron diário
+vercel.json                    # Agenda do cron (evita o projeto pausar)
 ```
 
 ## Observações
