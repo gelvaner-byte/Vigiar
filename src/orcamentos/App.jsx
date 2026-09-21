@@ -925,10 +925,13 @@ function ListaOrcamentos({ orcamentos, onAbrir }) {
     ["enviado", "Enviados"],
     ["aprovado", "Aprovados"],
   ];
+  const [dia, setDia] = useState(""); // "" = todos os dias
   const lista = useMemo(() => {
-    const arr = filtro === "todos" ? orcamentos : orcamentos.filter((o) => o.status === filtro);
-    return [...arr].sort((a, b) => (b.dataVisita || "").localeCompare(a.dataVisita || ""));
-  }, [orcamentos, filtro]);
+    let arr = filtro === "todos" ? orcamentos : orcamentos.filter((o) => o.status === filtro);
+    if (dia) arr = arr.filter((o) => o.dataVisita === dia);
+    return [...arr].sort((a, b) =>
+      (b.dataVisita || "").localeCompare(a.dataVisita || "") || (a.horaVisita || "99").localeCompare(b.horaVisita || "99"));
+  }, [orcamentos, filtro, dia]);
 
   const desempenho = useMemo(() => {
     const m = {};
@@ -969,13 +972,14 @@ function ListaOrcamentos({ orcamentos, onAbrir }) {
         </div>
       )}
 
+      <FiltroDia dia={dia} setDia={(d) => { setDia(d); if (d) setFiltro("todos"); }} />
       <div className="vg-chips">
         {filtros.map(([k, l]) => (
           <button key={k} className={`vg-chip ${filtro === k ? "on" : ""}`} onClick={() => setFiltro(k)}>{l}</button>
         ))}
       </div>
       {lista.length === 0 ? (
-        <Vazio texto="Nenhum orçamento aqui ainda. Toque no + para agendar o primeiro." />
+        <Vazio texto={dia ? `Nenhum orçamento com visita em ${fmtDate(dia)}.` : "Nenhum orçamento aqui ainda. Toque no + para agendar o primeiro."} />
       ) : (
         <div className="vg-list">
           {agruparPorData(lista, "dataVisita").map((g) => (
@@ -1014,26 +1018,29 @@ function ListaOrcamentos({ orcamentos, onAbrir }) {
 /* ============ lista de ordens ============ */
 function ListaOrdens({ ordens, onAbrir, onShare }) {
   const [filtro, setFiltro] = useState("agendada");
+  const [dia, setDia] = useState(""); // "" = todos os dias
   const filtros = [["agendada", "Agendadas"], ["concluida", "Concluídas"], ["todos", "Todas"]];
   const lista = useMemo(() => {
-    const arr = filtro === "todos" ? ordens : ordens.filter((o) => o.status === filtro);
-    // Agendadas: a mais próxima primeiro. Concluídas/todas: a mais recente primeiro.
+    let arr = filtro === "todos" ? ordens : ordens.filter((o) => o.status === filtro);
+    if (dia) arr = arr.filter((o) => o.dataServico === dia);
+    // Agendadas: a mais próxima primeiro. Concluídas/todas: a mais recente primeiro. No dia, sempre por horário.
     const dir = filtro === "agendada" ? 1 : -1;
     return [...arr].sort((a, b) =>
-      dir * ((a.dataServico || "").localeCompare(b.dataServico || "") || (a.horaServico || "99").localeCompare(b.horaServico || "99")));
-  }, [ordens, filtro]);
+      dir * (a.dataServico || "").localeCompare(b.dataServico || "") || (a.horaServico || "99").localeCompare(b.horaServico || "99"));
+  }, [ordens, filtro, dia]);
 
   return (
     <div className="vg-page">
       <span className="vg-eyebrow">Ordens de serviço</span>
       <h1 className="vg-h1">Seus serviços</h1>
+      <FiltroDia dia={dia} setDia={(d) => { setDia(d); if (d) setFiltro("todos"); }} />
       <div className="vg-chips">
         {filtros.map(([k, l]) => (
           <button key={k} className={`vg-chip ${filtro === k ? "on" : ""}`} onClick={() => setFiltro(k)}>{l}</button>
         ))}
       </div>
       {lista.length === 0 ? (
-        <Vazio texto="Nenhuma ordem de serviço aqui. Aprove um orçamento para gerar uma, ou toque no +." />
+        <Vazio texto={dia ? `Nenhum serviço em ${fmtDate(dia)}.` : "Nenhuma ordem de serviço aqui. Aprove um orçamento para gerar uma, ou toque no +."} />
       ) : (
         <div className="vg-list">
           {agruparPorData(lista, "dataServico").map((g) => (
@@ -1664,6 +1671,36 @@ function Card({ onClick, children }) {
     </div>
   );
 }
+// Escolher no calendário um dia específico para ver (ou "Todos os dias").
+function FiltroDia({ dia, setDia }) {
+  const t = todayStr();
+  if (!dia) {
+    return (
+      <div className="vg-filtro-dia">
+        <label className="vg-filtro-dia-btn">
+          <CalendarClock size={16} /> Ver um dia no calendário
+          <input type="date" className="vg-filtro-dia-input" value="" onChange={(e) => e.target.value && setDia(e.target.value)}
+            onClick={(e) => { try { e.currentTarget.showPicker(); } catch { /* navegador antigo: abre sozinho */ } }} />
+        </label>
+        <button className="vg-chip" onClick={() => setDia(t)}>Hoje</button>
+        <button className="vg-chip" onClick={() => setDia(addDaysStr(t, 1))}>Amanhã</button>
+      </div>
+    );
+  }
+  return (
+    <div className="vg-filtro-dia ativo">
+      <div className="vg-dia-nav">
+        <button className="vg-x" onClick={() => setDia(addDaysStr(dia, -1))} aria-label="Dia anterior"><ChevronLeft size={20} /></button>
+        <div className="vg-dia-centro">
+          <strong>{rotuloData(dia)}</strong>
+          <input type="date" className="vg-dia-input" value={dia} onChange={(e) => e.target.value && setDia(e.target.value)} aria-label="Escolher dia" />
+        </div>
+        <button className="vg-x" onClick={() => setDia(addDaysStr(dia, 1))} aria-label="Próximo dia"><ChevronRight size={20} /></button>
+      </div>
+      <button className="vg-link vg-dia-hoje" onClick={() => setDia("")}><X size={14} /> Mostrar todos os dias</button>
+    </div>
+  );
+}
 function GrupoData({ data, qtd }) {
   const passado = data && data < todayStr();
   return (
@@ -1756,6 +1793,12 @@ function Estilos() {
 .vg-alerta-txt strong{font-size:14px}
 .vg-alerta-txt span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vg-chev{transform:rotate(180deg);color:#c2ccda;flex-shrink:0}
+.vg-filtro-dia{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+.vg-filtro-dia.ativo{display:block}
+.vg-filtro-dia-btn{position:relative;display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);
+  border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700;color:var(--brand);cursor:pointer;overflow:hidden}
+.vg-filtro-dia-input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;border:0}
+.vg-filtro-dia-input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
 .vg-dia-nav{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px}
 .vg-dia-nav .vg-x{width:40px;height:40px;cursor:pointer}
 .vg-dia-centro{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
