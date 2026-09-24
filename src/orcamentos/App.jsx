@@ -621,6 +621,7 @@ function App() {
       materiais: materiaisOS({ itens: orc.itens }),
       dataServico,
       horaServico,
+      duracaoHoras: Number(orc.duracaoServico) || DURACAO_PADRAO,
       tecnicoEmail: orc.tecnicoEmail || "",
       tecnicoNome: orc.tecnicoNome || "",
       status: "agendada",
@@ -975,9 +976,16 @@ function compromissosPorDia(ordens, orcamentos) {
     );
   };
   ordens.forEach((o) => { if (o.status === "agendada") add(o.dataServico, o.horaServico, Number(o.duracaoHoras) || DURACAO_PADRAO); });
-  orcamentos.forEach((o) => { if (o.status === "agendado") add(o.dataVisita, o.horaVisita, DURACAO_VISITA); });
+  orcamentos.forEach((o) => { if (o.status === "agendado") add(o.dataVisita, o.horaVisita, Number(o.duracaoVisita) || DURACAO_VISITA); });
   return mapa;
 }
+
+// Opções de duração usadas nos campos "tempo da visita" e "tempo do serviço".
+const DURACOES = [
+  [0.5, "30 min"], [1, "1 hora"], [1.5, "1h30"], [2, "2 horas"], [3, "3 horas"],
+  [4, "4 horas (meio período)"], [6, "6 horas"], [8, "Dia inteiro"],
+];
+const fmtDuracao = (h) => (DURACOES.find(([v]) => v === Number(h)) || [0, `${h}h`])[1];
 
 // Próximos horários livres, em dia útil e dentro do expediente.
 function sugerirHorarios(ordens, orcamentos, { duracao = DURACAO_PADRAO, quantidade = 6, aPartirDe = todayStr() } = {}) {
@@ -1240,6 +1248,7 @@ function montarTarefas(orcamentos, ordens, dia) {
 function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, papel = "escritorio" }) {
   const t = todayStr();
   const [dia, setDia] = useState(t);
+  const [modo, setModo] = useState("dia"); // dia | mes
   const tarefas = useMemo(() => montarTarefas(orcamentos, ordens, dia), [orcamentos, ordens, dia]);
   const atrasadas = useMemo(() => {
     if (dia !== t) return [];
@@ -1277,6 +1286,16 @@ function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, 
       <span className="vg-eyebrow">{papel === "tecnico" ? "Área do técnico" : "Agenda"}</span>
       <h1 className="vg-h1">{papel === "tecnico" ? "Minha agenda" : "O que fazer no dia"}</h1>
 
+      <div className="vg-chips vg-modo">
+        <button className={`vg-chip ${modo === "dia" ? "on" : ""}`} onClick={() => setModo("dia")}><ListChecks size={14} /> Dia</button>
+        <button className={`vg-chip ${modo === "mes" ? "on" : ""}`} onClick={() => setModo("mes")}><CalendarClock size={14} /> Mês</button>
+      </div>
+
+      {modo === "mes" ? (
+        <Calendario orcamentos={orcamentos} ordens={ordens} onAbrirOrc={onAbrirOrc} onAbrirOs={onAbrirOs} />
+      ) : (
+      <>
+
       <div className="vg-dia-nav">
         <button className="vg-x" onClick={() => setDia(addDaysStr(dia, -1))} aria-label="Dia anterior"><ChevronLeft size={20} /></button>
         <div className="vg-dia-centro">
@@ -1312,6 +1331,105 @@ function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, 
           {tarefas.map((x) => (
             <Tarefa key={x.tipo + x.item.id} x={x} onAbrir={() => abrir(x)} onToggle={() => onToggle(x.tipo, x.item)} />
           ))}
+        </div>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+/* ============ calendário do mês ============ */
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const isoDe = (ano, mes, dia) => `${ano}-${String(mes + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+
+function Calendario({ orcamentos, ordens, onAbrirOrc, onAbrirOs }) {
+  const t = todayStr();
+  const [ano, mes] = [Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 1];
+  const [ref, setRef] = useState({ ano, mes });
+  const [diaSel, setDiaSel] = useState(t);
+
+  const mudarMes = (n) => {
+    const d = new Date(ref.ano, ref.mes + n, 1);
+    setRef({ ano: d.getFullYear(), mes: d.getMonth() });
+  };
+
+  const eventosPorDia = useMemo(() => {
+    const m = {};
+    const push = (data, ev) => { if (data) (m[data] = m[data] || []).push(ev); };
+    orcamentos.forEach((o) => push(o.dataVisita, { tipo: "visita", hora: o.horaVisita || "", item: o }));
+    ordens.forEach((o) => { if (o.status !== "cancelada") push(o.dataServico, { tipo: "servico", hora: o.horaServico || "", item: o }); });
+    Object.values(m).forEach((lista) => lista.sort((a, b) => (a.hora || "99").localeCompare(b.hora || "99")));
+    return m;
+  }, [orcamentos, ordens]);
+
+  const primeiroDiaSemana = new Date(ref.ano, ref.mes, 1).getDay();
+  const diasNoMes = new Date(ref.ano, ref.mes + 1, 0).getDate();
+  const celulas = [];
+  for (let i = 0; i < primeiroDiaSemana; i++) celulas.push(null);
+  for (let d = 1; d <= diasNoMes; d++) celulas.push(isoDe(ref.ano, ref.mes, d));
+
+  const doDia = eventosPorDia[diaSel] || [];
+
+  return (
+    <div className="vg-cal">
+      <div className="vg-dia-nav">
+        <button className="vg-x" onClick={() => mudarMes(-1)} aria-label="Mês anterior"><ChevronLeft size={20} /></button>
+        <div className="vg-dia-centro">
+          <strong>{MESES[ref.mes]} de {ref.ano}</strong>
+          <button className="vg-link" onClick={() => { setRef({ ano, mes }); setDiaSel(t); }}>Hoje</button>
+        </div>
+        <button className="vg-x" onClick={() => mudarMes(1)} aria-label="Próximo mês"><ChevronRight size={20} /></button>
+      </div>
+
+      <div className="vg-cal-grade">
+        {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => <span key={i} className="vg-cal-cab">{d}</span>)}
+        {celulas.map((data, i) => {
+          if (!data) return <span key={`v${i}`} className="vg-cal-vazio" />;
+          const evs = eventosPorDia[data] || [];
+          const fds = !diaUtil(data);
+          return (
+            <button key={data}
+              className={"vg-cal-dia" + (data === t ? " hoje" : "") + (data === diaSel ? " sel" : "") + (fds ? " fds" : "")}
+              onClick={() => setDiaSel(data)}>
+              <b>{Number(data.slice(8))}</b>
+              <span className="vg-cal-pontos">
+                {evs.slice(0, 3).map((e, k) => <i key={k} className={e.tipo === "visita" ? "visita" : "servico"} />)}
+                {evs.length > 3 && <em>+{evs.length - 3}</em>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="vg-cal-legenda">
+        <span><i className="visita" /> Visita de orçamento</span>
+        <span><i className="servico" /> Serviço</span>
+      </div>
+
+      <div className="vg-itens-head"><span>{rotuloData(diaSel)} — {doDia.length} compromisso{doDia.length === 1 ? "" : "s"}</span></div>
+      {doDia.length === 0 ? (
+        <Vazio texto="Nada marcado neste dia." />
+      ) : (
+        <div className="vg-tarefas">
+          {doDia.map((e) => {
+            const it = e.item;
+            const dur = e.tipo === "visita" ? (it.duracaoVisita || DURACAO_VISITA) : (it.duracaoHoras || DURACAO_PADRAO);
+            return (
+              <div key={e.tipo + it.id} className="vg-tarefa">
+                <div className="vg-tarefa-hora"><b>{e.hora || "—"}</b><span style={{ color: "var(--muted)" }}>{fmtDuracao(dur)}</span></div>
+                <div className="vg-tarefa-corpo" role="button" tabIndex={0}
+                  onClick={() => (e.tipo === "visita" ? onAbrirOrc(it) : onAbrirOs(it))}
+                  onKeyDown={(ev) => { if (ev.key === "Enter") (e.tipo === "visita" ? onAbrirOrc(it) : onAbrirOs(it)); }}>
+                  <span className={"vg-tarefa-tipo " + (e.tipo === "visita" ? "visita" : "servico")}>
+                    {e.tipo === "visita" ? <><FileText size={11} /> Visita · Orç. Nº {it.numero}</> : <><Wrench size={11} /> Serviço · OS Nº {it.numero}</>}
+                  </span>
+                  <strong className="vg-tarefa-cli">{it.cliente || "Sem nome"}</strong>
+                  <LinkEndereco endereco={it.endereco} bairro={it.bairro} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1598,9 +1716,10 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
   );
   const [prazo, setPrazo] = useState(addDaysStr(todayStr(), 2));
   // Sugestões de horário livre para executar o serviço (seg-sex, 8h-18h).
+  const duracaoServico = Number(inicial.duracaoServico) || DURACAO_PADRAO;
   const sugestoes = useMemo(
-    () => sugerirHorarios(ordens, orcamentos, { duracao: DURACAO_PADRAO, quantidade: 6 }),
-    [ordens, orcamentos],
+    () => sugerirHorarios(ordens, orcamentos, { duracao: duracaoServico, quantidade: 6 }),
+    [ordens, orcamentos, duracaoServico],
   );
   const [dataServico, setDataServico] = useState(() => {
     const [primeira] = sugerirHorarios(ordens, orcamentos, { quantidade: 1 });
@@ -1700,6 +1819,18 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
         </Campo>
         <Campo label="Horário da visita" icon={<Clock size={14} />}>
           <input type="time" className="vg-in" value={o.horaVisita || ""} onChange={(e) => set("horaVisita", e.target.value)} />
+        </Campo>
+      </div>
+      <div className="vg-row2">
+        <Campo label="Tempo da visita" icon={<Clock size={14} />}>
+          <select className="vg-in" value={o.duracaoVisita ?? DURACAO_VISITA} onChange={(e) => set("duracaoVisita", Number(e.target.value))}>
+            {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Tempo previsto do serviço" icon={<Wrench size={14} />}>
+          <select className="vg-in" value={o.duracaoServico ?? DURACAO_PADRAO} onChange={(e) => set("duracaoServico", Number(e.target.value))}>
+            {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
         </Campo>
       </div>
       <Campo label="Endereço — rua e nº *" icon={<MapPin size={14} />}>
@@ -1869,7 +2000,8 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
           {o.status === "aprovado" && (
             <div className="vg-acao-box">
               <label className="vg-acao-label">
-                Autorizado! Agora agende a execução. Sugestões de horário livre (seg a sex, 8h às 18h):
+                Autorizado! Agora agende a execução. Sugestões de horário livre para <b>{fmtDuracao(duracaoServico)}</b> de serviço
+                (seg a sex, 8h às 18h):
               </label>
               <div className="vg-sugestoes">
                 {sugestoes.length === 0 && <span className="vg-itens-vazio">Agenda cheia nos próximos 30 dias. Escolha a data na mão.</span>}
@@ -2027,6 +2159,11 @@ function SheetOS({ inicial, ordens, clientes = [], papel = "escritorio", tecnico
           </Campo>
         )}
       </div>
+      <Campo label="Tempo do serviço" icon={<Clock size={14} />}>
+        <select className="vg-in" value={o.duracaoHoras ?? DURACAO_PADRAO} onChange={(e) => set("duracaoHoras", Number(e.target.value))}>
+          {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </Campo>
       {!tecnico && (
         <Campo label="Técnico que executa" icon={<Wrench size={14} />}>
           <select className="vg-in" value={o.tecnicoEmail || ""}
@@ -2646,6 +2783,31 @@ function Estilos() {
 .vg-mat-min .vg-in{width:62px;padding:6px 8px;font-size:13px}
 .vg-mat-devolver{font-size:12px;font-weight:700;color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:3px 9px}
 .vg-mat-resumo{display:flex;align-items:center;gap:7px;background:#fdead8;color:#c25605;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:700;margin:2px 0 14px}
+.vg-modo{margin-bottom:12px;padding-bottom:0}
+.vg-modo .vg-chip{display:inline-flex;align-items:center;gap:6px}
+.vg-cal-grade{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:12px 0 10px}
+.vg-cal-cab{text-align:center;font-size:11px;font-weight:800;color:var(--muted);padding:4px 0}
+.vg-cal-vazio{aspect-ratio:1}
+.vg-cal-dia{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;font-family:inherit;cursor:pointer;padding:2px}
+.vg-cal-dia b{font-size:14px;font-weight:700;color:var(--ink)}
+.vg-cal-dia.fds{background:#fdf3ea}
+.vg-cal-dia.fds b{color:var(--muted)}
+.vg-cal-dia.hoje{border-color:var(--brand)}
+.vg-cal-dia.hoje b{color:var(--brand)}
+.vg-cal-dia.sel{background:var(--ink)}
+.vg-cal-dia.sel b{color:#fff}
+.vg-cal-pontos{display:flex;align-items:center;gap:3px;min-height:7px}
+.vg-cal-pontos i{width:6px;height:6px;border-radius:50%}
+.vg-cal-pontos i.visita{background:var(--brand)}
+.vg-cal-pontos i.servico{background:var(--ok)}
+.vg-cal-pontos em{font-style:normal;font-size:9px;font-weight:700;color:var(--muted)}
+.vg-cal-dia.sel .vg-cal-pontos em{color:#fff}
+.vg-cal-legenda{display:flex;gap:16px;justify-content:center;font-size:12px;color:var(--muted);margin-bottom:8px}
+.vg-cal-legenda span{display:inline-flex;align-items:center;gap:6px}
+.vg-cal-legenda i{width:8px;height:8px;border-radius:50%}
+.vg-cal-legenda i.visita{background:var(--brand)}
+.vg-cal-legenda i.servico{background:var(--ok)}
 .vg-sugestoes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:11px}
 .vg-sug{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface);border:1px solid var(--line);
   border-radius:11px;padding:8px 12px;font-family:inherit;cursor:pointer;text-align:left}
