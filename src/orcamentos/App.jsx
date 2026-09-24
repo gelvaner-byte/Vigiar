@@ -3,7 +3,8 @@ import {
   ShieldCheck, Bell, Home, FileText, Wrench, Plus, Trash2, Share2,
   Check, X, Clock, AlertTriangle, Phone, MapPin, Send, ChevronLeft,
   CalendarClock, CircleCheck, Pencil, ThumbsUp, ThumbsDown, Copy, Download,
-  UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink, ListChecks, ChevronRight, Search
+  UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink, ListChecks, ChevronRight, Search,
+  Megaphone, TrendingUp
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import {
@@ -726,7 +727,7 @@ function App() {
           <ListaClientes clientes={clientes} orcamentos={orcamentos} ordens={ordens} onAbrir={setCliAberto} />
         )}
         {view === "orcamentos" && (
-          <ListaOrcamentos orcamentos={orcamentos} onAbrir={setOrcAberto} />
+          <ListaOrcamentos orcamentos={orcamentos} clientes={clientes} ordens={ordens} onAbrir={setOrcAberto} />
         )}
         {view === "servicos" && (
           <ListaOrdens ordens={ordens} onAbrir={setOsAberta} onShare={setShare} />
@@ -945,6 +946,7 @@ const historicoCliente = (clienteId, orcamentos, ordens) => ({
   ordens: ordens.filter((o) => o.clienteId === clienteId)
     .sort((a, b) => (b.dataServico || "").localeCompare(a.dataServico || "")),
 });
+const ORIGENS = ["Instagram", "Facebook", "Google", "WhatsApp (direto)", "Indicação", "Placa / carro", "Cliente antigo", "Passando na rua", "Outro"];
 const buscaTexto = (c) => [c.nome, c.telefone, c.endereco, c.bairro, c.documento].filter(Boolean).join(" ").toLowerCase();
 
 function ListaClientes({ clientes, orcamentos, ordens, onAbrir }) {
@@ -995,7 +997,7 @@ function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExclu
   const novo = inicial.novo;
   const [c, setC] = useState(() =>
     novo
-      ? { id: uid(), nome: "", telefone: "", telefone2: "", endereco: "", bairro: "", documento: "", email: "", observacoes: "", criadoEm: todayStr() }
+      ? { id: uid(), nome: "", telefone: "", telefone2: "", endereco: "", bairro: "", documento: "", email: "", observacoes: "", origem: "", campanha: "", criadoEm: todayStr() }
       : { ...inicial });
   const [erro, setErro] = useState("");
   const set = (k, v) => setC((p) => ({ ...p, [k]: v }));
@@ -1031,6 +1033,17 @@ function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExclu
         <input className="vg-in" value={c.bairro || ""} onChange={(e) => set("bairro", e.target.value)} placeholder="Ex.: Santa Amélia" />
       </Campo>
       <EnderecoMapa endereco={c.endereco} bairro={c.bairro} />
+      <div className="vg-row2">
+        <Campo label="Como chegou até nós" icon={<Megaphone size={14} />}>
+          <select className="vg-in" value={c.origem || ""} onChange={(e) => set("origem", e.target.value)}>
+            <option value="">Não sei / não informado</option>
+            {ORIGENS.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Código da campanha">
+          <input className="vg-in" value={c.campanha || ""} onChange={(e) => set("campanha", e.target.value)} placeholder="Ex.: IG-CAMERA-01" />
+        </Campo>
+      </div>
       <div className="vg-row2">
         <Campo label="CPF / CNPJ">
           <input className="vg-in" value={c.documento || ""} onChange={(e) => set("documento", e.target.value)} placeholder="opcional" />
@@ -1291,7 +1304,7 @@ function Tarefa({ x, dataExtra, onAbrir, onToggle }) {
 }
 
 /* ============ lista de orçamentos ============ */
-function ListaOrcamentos({ orcamentos, onAbrir }) {
+function ListaOrcamentos({ orcamentos, clientes = [], ordens = [], onAbrir }) {
   const [filtro, setFiltro] = useState("todos");
   const [verDesemp, setVerDesemp] = useState(false);
   const t = todayStr();
@@ -1321,6 +1334,35 @@ function ListaOrcamentos({ orcamentos, onAbrir }) {
     return Object.values(m).sort((a, b) => b.vendido - a.vendido || b.total - a.total);
   }, [orcamentos]);
 
+  // De onde vem o dinheiro: cada origem com clientes, orçamentos, fechados e faturamento.
+  const porOrigem = useMemo(() => {
+    const m = {};
+    const doCliente = new Map(clientes.map((c) => [c.id, c]));
+    const chave = (clienteId) => {
+      const c = doCliente.get(clienteId);
+      return (c && String(c.origem || "").trim()) || "Sem origem";
+    };
+    clientes.forEach((c) => {
+      const k = String(c.origem || "").trim() || "Sem origem";
+      if (!m[k]) m[k] = { nome: k, clientes: 0, orcamentos: 0, fechados: 0, faturado: 0 };
+      m[k].clientes += 1;
+    });
+    orcamentos.forEach((o) => {
+      const k = chave(o.clienteId);
+      if (!m[k]) m[k] = { nome: k, clientes: 0, orcamentos: 0, fechados: 0, faturado: 0 };
+      m[k].orcamentos += 1;
+      if (o.status === "aprovado") m[k].fechados += 1;
+    });
+    ordens.forEach((os) => {
+      if (os.status === "cancelada") return;
+      const k = chave(os.clienteId);
+      if (!m[k]) m[k] = { nome: k, clientes: 0, orcamentos: 0, fechados: 0, faturado: 0 };
+      m[k].faturado += valorOS(os);
+    });
+    return Object.values(m).sort((a, b) => b.faturado - a.faturado || b.orcamentos - a.orcamentos);
+  }, [clientes, orcamentos, ordens]);
+  const [verOrigem, setVerOrigem] = useState(false);
+
   return (
     <div className="vg-page">
       <span className="vg-eyebrow">Orçamentos</span>
@@ -1344,6 +1386,36 @@ function ListaOrcamentos({ orcamentos, onAbrir }) {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {porOrigem.length > 0 && (
+        <div className="vg-desemp">
+          <button className="vg-desemp-toggle" onClick={() => setVerOrigem((v) => !v)}>
+            <span><TrendingUp size={15} /> De onde vêm as vendas</span>
+            <ChevronLeft size={16} className={"vg-desemp-chev" + (verOrigem ? " open" : "")} />
+          </button>
+          {verOrigem && (
+            <div className="vg-desemp-list">
+              {porOrigem.map((d) => {
+                const taxa = d.orcamentos ? Math.round((d.fechados / d.orcamentos) * 100) : 0;
+                return (
+                  <div key={d.nome} className="vg-origem-row">
+                    <div className="vg-origem-topo">
+                      <strong>{d.nome}</strong>
+                      <span className="vg-desemp-val">{brl(d.faturado)}</span>
+                    </div>
+                    <div className="vg-desemp-nums">
+                      <span><b>{d.clientes}</b> clientes</span>
+                      <span><b>{d.orcamentos}</b> orç.</span>
+                      <span><b>{d.fechados}</b> fechados</span>
+                      <span className={"vg-taxa" + (taxa >= 40 ? " boa" : taxa < 20 ? " ruim" : "")}>{taxa}% fecha</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -2119,6 +2191,8 @@ function SheetVendedoras({ vendedoras, ativaId, onAdd, onRename, onRemove, onSet
         </div>
       )}
 
+      {onEquipe && <GeradorLink />}
+
       {onEquipe && (
         <div className="vg-backup">
           <div className="vg-itens-head">
@@ -2173,6 +2247,68 @@ function SheetVendedoras({ vendedoras, ativaId, onAdd, onRename, onRemove, onSet
         </div>
       )}
     </Sheet>
+  );
+}
+
+// Gera o link de WhatsApp de cada anúncio. A mensagem do cliente já chega com o código,
+// então dá para saber qual anúncio trouxe a venda.
+const KEY_WPP = "vigiar:orc:wpp";
+function GeradorLink() {
+  const [fone, setFone] = useState(() => { try { return localStorage.getItem(KEY_WPP) || ""; } catch { return ""; } });
+  const [origem, setOrigem] = useState(ORIGENS[0]);
+  const [codigo, setCodigo] = useState("");
+  const [copiado, setCopiado] = useState("");
+
+  const numero = String(fone).replace(/\D/g, "");
+  const cod = codigo.trim() || origem.toUpperCase().slice(0, 3);
+  const texto = `Olá! Quero um orçamento de segurança eletrônica. [${cod}]`;
+  const link = numero.length >= 10
+    ? `https://wa.me/55${numero}?text=${encodeURIComponent(texto)}`
+    : "";
+
+  const guardarFone = (v) => { setFone(v); try { localStorage.setItem(KEY_WPP, v); } catch { /* ignora */ } };
+  const copiarLink = async () => {
+    if (!link) return;
+    const ok = await copiar(link);
+    setCopiado(ok ? "Link copiado!" : "Não consegui copiar — segure e copie o link.");
+    setTimeout(() => setCopiado(""), 2500);
+  };
+
+  return (
+    <div className="vg-backup">
+      <div className="vg-itens-head">
+        <span><Megaphone size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />Link de anúncio com rastreio</span>
+      </div>
+      <p className="vg-prev-dica">
+        Gere um link por anúncio. A mensagem do cliente chega com o código entre colchetes — é só cadastrar
+        o cliente com essa <b>origem</b> e ver depois, em Orçamentos, qual anúncio deu lucro.
+      </p>
+      <Campo label="Seu WhatsApp (com DDD)">
+        <input className="vg-in" value={fone} onChange={(e) => guardarFone(e.target.value)} placeholder="31 99999-9999" inputMode="tel" />
+      </Campo>
+      <div className="vg-row2">
+        <Campo label="Origem do anúncio">
+          <select className="vg-in" value={origem} onChange={(e) => setOrigem(e.target.value)}>
+            {ORIGENS.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Código">
+          <input className="vg-in" value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ex.: IG-CAMERA-01" />
+        </Campo>
+      </div>
+      {link ? (
+        <>
+          <div className="vg-link-gerado">{link}</div>
+          <div className="vg-acao-row">
+            <button className="vg-btn vg-btn-primary" onClick={copiarLink}><Copy size={16} /> Copiar link</button>
+            <a className="vg-btn vg-btn-ghost" href={link} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Testar</a>
+          </div>
+          {copiado && <p className="vg-backup-nota">{copiado}</p>}
+        </>
+      ) : (
+        <p className="vg-backup-nota">Digite seu WhatsApp com DDD para gerar o link.</p>
+      )}
+    </div>
   );
 }
 
@@ -2410,6 +2546,14 @@ function Estilos() {
 .vg-mat-min .vg-in{width:62px;padding:6px 8px;font-size:13px}
 .vg-mat-devolver{font-size:12px;font-weight:700;color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:3px 9px}
 .vg-mat-resumo{display:flex;align-items:center;gap:7px;background:#fdead8;color:#c25605;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:700;margin:2px 0 14px}
+.vg-origem-row{padding:10px 2px;border-bottom:1px solid var(--line)}
+.vg-origem-row:last-child{border-bottom:none}
+.vg-origem-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px;font-size:14px}
+.vg-taxa{font-weight:800;color:var(--muted)}
+.vg-taxa.boa{color:var(--ok)}
+.vg-taxa.ruim{color:var(--alert)}
+.vg-link-gerado{background:#fffaf5;border:1px solid var(--line);border-radius:11px;padding:10px 12px;font-size:12px;
+  color:var(--muted);word-break:break-all;margin-bottom:10px;line-height:1.5}
 .vg-equipe-mail{display:block;font-style:normal;font-size:12px;color:var(--muted);font-weight:600}
 .vg-cli-nome{display:inline-flex;align-items:center;gap:9px;font-size:16px;font-weight:700}
 .vg-card-tel{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);font-weight:600}
