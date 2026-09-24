@@ -3,7 +3,7 @@ import {
   ShieldCheck, Bell, Home, FileText, Wrench, Plus, Trash2, Share2,
   Check, X, Clock, AlertTriangle, Phone, MapPin, Send, ChevronLeft,
   CalendarClock, CircleCheck, Pencil, ThumbsUp, ThumbsDown, Copy, Download,
-  UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink, ListChecks, ChevronRight
+  UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink, ListChecks, ChevronRight, Search
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import {
@@ -352,6 +352,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [orcamentos, setOrcamentos] = useState([]);
   const [ordens, setOrdens] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [cliAberto, setCliAberto] = useState(null); // ficha do cliente: objeto ou {novo:true}
   const [view, setView] = useState("hoje");
   const [orcAberto, setOrcAberto] = useState(null); // objeto ou {novo:true}
   const [osAberta, setOsAberta] = useState(null);
@@ -371,8 +373,9 @@ function App() {
       const vend = (d.config.vendedoras && d.config.vendedoras.lista) || [];
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
+      setClientes(d.clientes);
       setVendedoras(vend);
-      gravarCache({ orcamentos: d.orcamentos, ordens: d.ordens, vendedoras: vend });
+      gravarCache({ orcamentos: d.orcamentos, ordens: d.ordens, clientes: d.clientes, vendedoras: vend });
       setAviso((a) => (a.startsWith("Sem conexão") ? "" : a));
     } catch (e) {
       console.error(e);
@@ -381,6 +384,7 @@ function App() {
         if (c) {
           setOrcamentos(c.orcamentos || []);
           setOrdens(c.ordens || []);
+          setClientes(c.clientes || []);
           setVendedoras(c.vendedoras || []);
         }
       }
@@ -405,6 +409,7 @@ function App() {
     try {
       await salvarRegistros("orcamentos", orcamentos);
       await salvarRegistros("ordens", ordens);
+      await salvarRegistros("clientes", clientes);
       await salvarConfig("vendedoras", { lista: vendedoras });
       setAviso("");
       setToast("Tudo salvo no banco.");
@@ -418,7 +423,7 @@ function App() {
   };
 
   const exportarBackup = () => {
-    const dados = { app: "vigiar-orcamentos", exportadoEm: new Date().toISOString(), orcamentos, ordens, vendedoras };
+    const dados = { app: "vigiar-orcamentos", exportadoEm: new Date().toISOString(), clientes, orcamentos, ordens, vendedoras };
     baixarArquivo(`vigiar-orcamentos-backup-${todayStr()}.json`, JSON.stringify(dados, null, 2), "application/json");
   };
   const importarBackup = async (arquivo) => {
@@ -428,13 +433,16 @@ function App() {
       const idsOs = new Set(ordens.map((x) => x.id));
       const novosOrc = b.orcamentos.filter((x) => x && x.id && !idsOrc.has(x.id));
       const novasOs = b.ordens.filter((x) => x && x.id && !idsOs.has(x.id));
+      const idsCli = new Set(clientes.map((x) => x.id));
+      const novosCli = (b.clientes || []).filter((x) => x && x.id && !idsCli.has(x.id));
       const nomes = new Set(vendedoras.map((v) => v.nome));
       const novasVend = b.vendedoras.filter((v) => v && v.nome && !nomes.has(v.nome));
+      await salvarRegistros("clientes", novosCli);
       await salvarRegistros("orcamentos", novosOrc);
       await salvarRegistros("ordens", novasOs);
       if (novasVend.length) await salvarConfig("vendedoras", { lista: [...vendedoras, ...novasVend] });
       await recarregar();
-      setToast(`Importado: ${novosOrc.length} orçamento(s), ${novasOs.length} OS, ${novasVend.length} vendedora(s).`);
+      setToast(`Importado: ${novosCli.length} cliente(s), ${novosOrc.length} orçamento(s), ${novasOs.length} OS.`);
     } catch (e) {
       console.error(e);
       setToast("Não consegui importar: " + (e.message || "arquivo inválido"));
@@ -458,6 +466,53 @@ function App() {
     const antes = ordens;
     setOrdens(next);
     sincronizarLista("ordens", antes, next).catch(falhaAoSalvar);
+  };
+  const updClientes = (next) => {
+    const antes = clientes;
+    setClientes(next);
+    sincronizarLista("clientes", antes, next).catch(falhaAoSalvar);
+  };
+
+  // ===== clientes =====
+  const salvarCliente = (cli) => {
+    const existe = clientes.some((x) => x.id === cli.id);
+    updClientes(existe ? clientes.map((x) => (x.id === cli.id ? cli : x)) : [...clientes, cli]);
+    // Mantém nome/telefone/endereço em dia nos orçamentos e OS desse cliente.
+    if (existe) {
+      const atualiza = (x) => (x.clienteId === cli.id ? { ...x, cliente: cli.nome, telefone: cli.telefone } : x);
+      const nOrc = orcamentos.map(atualiza);
+      if (JSON.stringify(nOrc) !== JSON.stringify(orcamentos)) updOrc(nOrc);
+      const nOs = ordens.map(atualiza);
+      if (JSON.stringify(nOs) !== JSON.stringify(ordens)) updOs(nOs);
+    }
+    setCliAberto(null);
+    setToast(existe ? "Cliente atualizado." : "Cliente cadastrado.");
+    return cli;
+  };
+  // Cadastro rápido feito de dentro do orçamento/OS: salva e devolve o cliente.
+  const criarClienteRapido = (dados) => {
+    const cli = { id: uid(), criadoEm: todayStr(), ...dados };
+    updClientes([...clientes, cli]);
+    setToast(`Cliente ${cli.nome} cadastrado.`);
+    return cli;
+  };
+  const excluirCliente = (id) => {
+    const temOrc = orcamentos.some((o) => o.clienteId === id);
+    const temOs = ordens.some((o) => o.clienteId === id);
+    if (temOrc || temOs) {
+      setToast("Não dá para excluir: esse cliente tem orçamentos ou serviços no histórico.");
+      return;
+    }
+    updClientes(clientes.filter((x) => x.id !== id));
+    setCliAberto(null);
+  };
+  const novoOrcParaCliente = (cli) => {
+    setCliAberto(null);
+    setOrcAberto({ novo: true, cliente: cli });
+  };
+  const novaOsParaCliente = (cli) => {
+    setCliAberto(null);
+    setOsAberta({ novo: true, cliente: cli });
   };
 
   const salvarOrc = (orc) => {
@@ -512,6 +567,7 @@ function App() {
       numero: nextNumero(ordens),
       orcamentoId: orc.id,
       orcamentoNum: orc.numero,
+      clienteId: orc.clienteId || "",
       cliente: orc.cliente,
       telefone: orc.telefone,
       endereco: orc.endereco,
@@ -611,6 +667,9 @@ function App() {
             onShare={setShare}
           />
         )}
+        {view === "clientes" && (
+          <ListaClientes clientes={clientes} orcamentos={orcamentos} ordens={ordens} onAbrir={setCliAberto} />
+        )}
         {view === "orcamentos" && (
           <ListaOrcamentos orcamentos={orcamentos} onAbrir={setOrcAberto} />
         )}
@@ -622,9 +681,9 @@ function App() {
       <button
         className="vg-fab"
         onClick={() =>
-          view === "servicos"
-            ? setOsAberta({ novo: true })
-            : setOrcAberto({ novo: true })
+          view === "servicos" ? setOsAberta({ novo: true })
+            : view === "clientes" ? setCliAberto({ novo: true })
+              : setOrcAberto({ novo: true })
         }
         aria-label="Adicionar"
       >
@@ -634,6 +693,7 @@ function App() {
       <nav className="vg-nav">
         <NavBtn ativo={view === "hoje"} onClick={() => setView("hoje")} icon={<Home size={20} />} label="Hoje" />
         <NavBtn ativo={view === "agenda"} onClick={() => setView("agenda")} icon={<ListChecks size={20} />} label="Agenda" />
+        <NavBtn ativo={view === "clientes"} onClick={() => setView("clientes")} icon={<Users size={20} />} label="Clientes" />
         <NavBtn ativo={view === "orcamentos"} onClick={() => setView("orcamentos")} icon={<FileText size={20} />} label="Orçamentos" />
         <NavBtn ativo={view === "servicos"} onClick={() => setView("servicos")} icon={<Wrench size={20} />} label="Serviços" />
       </nav>
@@ -642,6 +702,8 @@ function App() {
         <SheetOrcamento
           inicial={orcAberto}
           orcamentos={orcamentos}
+          clientes={clientes}
+          onCriarCliente={criarClienteRapido}
           vendedoras={vendedoras}
           vendedorPadrao={vendAtiva ? vendAtiva.nome : ""}
           onSalvar={salvarOrc}
@@ -657,10 +719,29 @@ function App() {
         <SheetOS
           inicial={osAberta}
           ordens={ordens}
+          clientes={clientes}
+          onCriarCliente={criarClienteRapido}
           onSalvar={salvarOs}
           onExcluir={excluirOs}
           onShare={setShare}
+          onToast={setToast}
           onFechar={() => setOsAberta(null)}
+        />
+      )}
+      {cliAberto && (
+        <SheetCliente
+          inicial={cliAberto}
+          clientes={clientes}
+          orcamentos={orcamentos}
+          ordens={ordens}
+          onSalvar={salvarCliente}
+          onExcluir={excluirCliente}
+          onNovoOrc={novoOrcParaCliente}
+          onNovaOs={novaOsParaCliente}
+          onAbrirOrc={(o) => { setCliAberto(null); setOrcAberto(o); }}
+          onAbrirOs={(o) => { setCliAberto(null); setOsAberta(o); }}
+          onToast={setToast}
+          onFechar={() => setCliAberto(null)}
         />
       )}
       {share && <ModalShare titulo={share.titulo} texto={share.texto} onFechar={() => setShare(null)} />}
@@ -775,6 +856,246 @@ function Hoje({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onShare }) {
           ))
         )}
       </Secao>
+    </div>
+  );
+}
+
+/* ============ CLIENTES ============ */
+// Dados que o orçamento/OS guarda do cliente escolhido.
+const dadosDoCliente = (c) => ({
+  clienteId: c ? c.id : "",
+  cliente: c ? c.nome : "",
+  telefone: c ? c.telefone || "" : "",
+  endereco: c ? c.endereco || "" : "",
+  bairro: c ? c.bairro || "" : "",
+});
+const historicoCliente = (clienteId, orcamentos, ordens) => ({
+  orcamentos: orcamentos.filter((o) => o.clienteId === clienteId)
+    .sort((a, b) => (b.dataVisita || "").localeCompare(a.dataVisita || "")),
+  ordens: ordens.filter((o) => o.clienteId === clienteId)
+    .sort((a, b) => (b.dataServico || "").localeCompare(a.dataServico || "")),
+});
+const buscaTexto = (c) => [c.nome, c.telefone, c.endereco, c.bairro, c.documento].filter(Boolean).join(" ").toLowerCase();
+
+function ListaClientes({ clientes, orcamentos, ordens, onAbrir }) {
+  const [busca, setBusca] = useState("");
+  const lista = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return [...clientes]
+      .filter((c) => !q || buscaTexto(c).includes(q))
+      .sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR"));
+  }, [clientes, busca]);
+
+  return (
+    <div className="vg-page">
+      <span className="vg-eyebrow">Clientes</span>
+      <h1 className="vg-h1">Seus clientes</h1>
+      <Campo label="Procurar cliente" icon={<Search size={14} />}>
+        <input className="vg-in" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, telefone, endereço…" />
+      </Campo>
+      {clientes.length === 0 ? (
+        <Vazio texto="Nenhum cliente cadastrado. Toque no + para cadastrar o primeiro. Só é possível agendar orçamento ou serviço para cliente cadastrado." />
+      ) : lista.length === 0 ? (
+        <Vazio texto={`Nenhum cliente encontrado para "${busca}".`} />
+      ) : (
+        <div className="vg-list">
+          {lista.map((c) => {
+            const h = historicoCliente(c.id, orcamentos, ordens);
+            return (
+              <Card key={c.id} onClick={() => onAbrir(c)}>
+                <div className="vg-card-top">
+                  <span className="vg-cli-nome"><span className="vg-vend-av sm">{String(c.nome || "?").charAt(0).toUpperCase()}</span>{c.nome}</span>
+                </div>
+                <LinkEndereco endereco={c.endereco} bairro={c.bairro} />
+                {c.telefone && <span className="vg-card-tel"><Phone size={12} /> {c.telefone}</span>}
+                <div className="vg-card-foot">
+                  <span className="vg-card-mat"><FileText size={12} /> {h.orcamentos.length} orç.</span>
+                  <span className="vg-card-mat"><Wrench size={12} /> {h.ordens.length} serviço{h.ordens.length === 1 ? "" : "s"}</span>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExcluir, onNovoOrc, onNovaOs, onAbrirOrc, onAbrirOs, onToast, onFechar }) {
+  const novo = inicial.novo;
+  const [c, setC] = useState(() =>
+    novo
+      ? { id: uid(), nome: "", telefone: "", telefone2: "", endereco: "", bairro: "", documento: "", email: "", observacoes: "", criadoEm: todayStr() }
+      : { ...inicial });
+  const [erro, setErro] = useState("");
+  const set = (k, v) => setC((p) => ({ ...p, [k]: v }));
+  const h = novo ? { orcamentos: [], ordens: [] } : historicoCliente(c.id, orcamentos, ordens);
+  const totalFechado = h.ordens.filter((o) => o.status !== "cancelada").reduce((s, o) => s + valorOS(o), 0);
+
+  const salvar = () => {
+    if (!c.nome.trim()) { setErro("O nome do cliente é obrigatório."); return; }
+    const repetido = clientes.some((x) => x.id !== c.id && String(x.nome).trim().toLowerCase() === c.nome.trim().toLowerCase());
+    if (repetido) { setErro("Já existe um cliente com esse nome."); return; }
+    onSalvar({ ...c, nome: c.nome.trim() });
+  };
+
+  return (
+    <Sheet onFechar={onFechar} titulo={novo ? "Novo cliente" : c.nome || "Cliente"}>
+      <Campo label="Nome ou empresa *">
+        <input className={"vg-in" + (erro ? " vg-in-erro" : "")} value={c.nome} autoFocus={novo}
+          onChange={(e) => { set("nome", e.target.value); setErro(""); }} placeholder="Ex.: Maria Silva / Padaria Pão Bom" />
+        {erro && <span className="vg-erro">{erro}</span>}
+      </Campo>
+      <div className="vg-row2">
+        <Campo label="Telefone" icon={<Phone size={14} />}>
+          <input className="vg-in" value={c.telefone} onChange={(e) => set("telefone", e.target.value)} placeholder="(00) 00000-0000" inputMode="tel" />
+        </Campo>
+        <Campo label="Outro telefone">
+          <input className="vg-in" value={c.telefone2 || ""} onChange={(e) => set("telefone2", e.target.value)} placeholder="opcional" inputMode="tel" />
+        </Campo>
+      </div>
+      <Campo label="Endereço — rua e nº" icon={<MapPin size={14} />}>
+        <input className="vg-in" value={c.endereco} onChange={(e) => set("endereco", e.target.value)} placeholder="Ex.: Rua das Flores, 100" />
+      </Campo>
+      <Campo label="Bairro">
+        <input className="vg-in" value={c.bairro || ""} onChange={(e) => set("bairro", e.target.value)} placeholder="Ex.: Santa Amélia" />
+      </Campo>
+      <EnderecoMapa endereco={c.endereco} bairro={c.bairro} />
+      <div className="vg-row2">
+        <Campo label="CPF / CNPJ">
+          <input className="vg-in" value={c.documento || ""} onChange={(e) => set("documento", e.target.value)} placeholder="opcional" />
+        </Campo>
+        <Campo label="E-mail">
+          <input className="vg-in" value={c.email || ""} onChange={(e) => set("email", e.target.value)} placeholder="opcional" inputMode="email" />
+        </Campo>
+      </div>
+      <Campo label="Observações">
+        <textarea className="vg-in vg-ta" rows={2} value={c.observacoes || ""} onChange={(e) => set("observacoes", e.target.value)}
+          placeholder="Ponto de referência, horário que atende, cuidado com cachorro…" />
+      </Campo>
+
+      <div className="vg-sheet-foot">
+        <button className="vg-btn vg-btn-primary" onClick={salvar}><Check size={16} /> Salvar</button>
+        {!novo && (
+          <button className="vg-iconbtn" onClick={() => onExcluir(c.id)} aria-label="Excluir cliente"><Trash2 size={18} /></button>
+        )}
+      </div>
+
+      {!novo && (
+        <>
+          <div className="vg-acao-row" style={{ marginTop: 12 }}>
+            <button className="vg-btn vg-btn-ghost" onClick={() => onNovoOrc(c)}><FileText size={16} /> Novo orçamento</button>
+            <button className="vg-btn vg-btn-ghost" onClick={() => onNovaOs(c)}><Wrench size={16} /> Novo serviço</button>
+          </div>
+
+          <div className="vg-hist">
+            <div className="vg-itens-head"><span>Histórico do cliente</span></div>
+            <div className="vg-stats">
+              <div className="vg-stat"><b>{h.orcamentos.length}</b><span>orçamentos</span></div>
+              <div className="vg-stat"><b>{h.ordens.length}</b><span>serviços</span></div>
+              <div className="vg-stat"><b style={{ fontSize: 16 }}>{brl(totalFechado)}</b><span>em serviços</span></div>
+            </div>
+
+            {h.orcamentos.length === 0 && h.ordens.length === 0 && (
+              <Vazio texto="Nada no histórico ainda. Tudo que você fizer para este cliente aparece aqui." />
+            )}
+            {h.orcamentos.map((o) => (
+              <button key={o.id} className="vg-hist-item" onClick={() => onAbrirOrc(o)}>
+                <span className="vg-tarefa-tipo visita"><FileText size={11} /> Orç. Nº {o.numero}</span>
+                <span className="vg-hist-data">{fmtDate(o.dataVisita)}</span>
+                <span className="vg-hist-val">{itemsTotal(o.itens) > 0 ? brl(itemsTotal(o.itens)) : "—"}</span>
+                <Badge st={ORC_STATUS[o.status]} />
+              </button>
+            ))}
+            {h.ordens.map((o) => (
+              <button key={o.id} className="vg-hist-item" onClick={() => onAbrirOs(o)}>
+                <span className="vg-tarefa-tipo servico"><Wrench size={11} /> OS Nº {o.numero}</span>
+                <span className="vg-hist-data">{fmtDate(o.dataServico)}</span>
+                <span className="vg-hist-val">{valorOS(o) > 0 ? brl(valorOS(o)) : "—"}</span>
+                <Badge st={OS_STATUS[o.status]} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+// Seletor de cliente usado no orçamento e na OS. Sem cliente, não dá para salvar.
+function SeletorCliente({ clientes, clienteId, onSelecionar, onCriarCliente, erro }) {
+  const [abrindo, setAbrindo] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [novo, setNovo] = useState(null); // {nome, telefone, endereco, bairro}
+  const cli = clientes.find((x) => x.id === clienteId);
+
+  const achados = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return [...clientes]
+      .filter((c) => !q || buscaTexto(c).includes(q))
+      .sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR"))
+      .slice(0, 30);
+  }, [clientes, busca]);
+
+  const escolher = (c) => { onSelecionar(c); setAbrindo(false); setBusca(""); setNovo(null); };
+  const cadastrar = () => {
+    if (!novo.nome.trim()) return;
+    escolher(onCriarCliente({ ...novo, nome: novo.nome.trim() }));
+  };
+
+  if (cli && !abrindo) {
+    return (
+      <div className="vg-cliente-sel">
+        <div className="vg-cliente-info">
+          <span className="vg-vend-av">{String(cli.nome).charAt(0).toUpperCase()}</span>
+          <div>
+            <strong>{cli.nome}</strong>
+            <span>{[cli.telefone, [cli.endereco, cli.bairro].filter(Boolean).join(" - ")].filter(Boolean).join(" · ") || "Sem telefone/endereço"}</span>
+          </div>
+        </div>
+        <button className="vg-btn vg-btn-ghost vg-cliente-trocar" onClick={() => setAbrindo(true)}>Trocar</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={"vg-cliente-box" + (erro ? " erro" : "")}>
+      <div className="vg-campo-l"><UserRound size={14} /> Cliente * (só cadastrados)</div>
+      {novo ? (
+        <div className="vg-cliente-novo">
+          <input className="vg-in" autoFocus value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} placeholder="Nome ou empresa *" />
+          <input className="vg-in" value={novo.telefone} onChange={(e) => setNovo({ ...novo, telefone: e.target.value })} placeholder="Telefone" inputMode="tel" />
+          <input className="vg-in" value={novo.endereco} onChange={(e) => setNovo({ ...novo, endereco: e.target.value })} placeholder="Endereço — rua e nº" />
+          <input className="vg-in" value={novo.bairro} onChange={(e) => setNovo({ ...novo, bairro: e.target.value })} placeholder="Bairro" />
+          <div className="vg-acao-row">
+            <button className="vg-btn vg-btn-primary" onClick={cadastrar}><Check size={16} /> Cadastrar e usar</button>
+            <button className="vg-btn vg-btn-ghost" onClick={() => setNovo(null)}>Cancelar</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <input className="vg-in" autoFocus={abrindo} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar cliente cadastrado…" />
+          <div className="vg-cliente-lista">
+            {achados.length === 0 && <div className="vg-itens-vazio">Nenhum cliente encontrado.</div>}
+            {achados.map((c) => (
+              <button key={c.id} className="vg-cliente-op" onClick={() => escolher(c)}>
+                <span className="vg-vend-av sm">{String(c.nome || "?").charAt(0).toUpperCase()}</span>
+                <span className="vg-cliente-op-txt">
+                  <strong>{c.nome}</strong>
+                  <span>{[c.telefone, c.endereco].filter(Boolean).join(" · ")}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="vg-acao-row">
+            <button className="vg-btn vg-btn-ghost" onClick={() => setNovo({ nome: busca, telefone: "", endereco: "", bairro: "" })}>
+              <Plus size={16} /> Cadastrar novo cliente
+            </button>
+            {cli && <button className="vg-btn vg-btn-ghost" onClick={() => setAbrindo(false)}>Cancelar</button>}
+          </div>
+        </>
+      )}
+      {erro && <span className="vg-erro">{erro}</span>}
     </div>
   );
 }
@@ -1080,13 +1401,13 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
 }
 
 /* ============ sheet de orçamento ============ */
-function SheetOrcamento({ inicial, orcamentos, vendedoras = [], vendedorPadrao = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
+function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, vendedoras = [], vendedorPadrao = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
   const novo = inicial.novo;
   const [o, setO] = useState(() =>
     novo
       ? {
-          id: uid(), numero: nextNumero(orcamentos), cliente: "", telefone: "",
-          endereco: "", bairro: "", descricaoServico: "", dataVisita: todayStr(), horaVisita: "",
+          id: uid(), numero: nextNumero(orcamentos), ...dadosDoCliente(inicial.cliente),
+          descricaoServico: "", dataVisita: todayStr(), horaVisita: "",
           status: "agendado", prazoEnvio: "", itens: [], observacoes: "",
           vendedor: vendedorPadrao || "", validadeDias: 7, dataEnvio: "", criadoEm: todayStr(),
         }
@@ -1095,7 +1416,9 @@ function SheetOrcamento({ inicial, orcamentos, vendedoras = [], vendedorPadrao =
   const [prazo, setPrazo] = useState(addDaysStr(todayStr(), 2));
   const [dataServico, setDataServico] = useState(addDaysStr(todayStr(), 2));
   const [erroEnd, setErroEnd] = useState(false);
+  const [erroCli, setErroCli] = useState("");
   const set = (k, v) => setO((p) => ({ ...p, [k]: v }));
+  const escolherCliente = (c) => { setO((p) => ({ ...p, ...dadosDoCliente(c) })); setErroCli(""); setErroEnd(false); };
 
   const setItem = (i, k, v) =>
     setO((p) => ({ ...p, itens: p.itens.map((it, idx) => (idx === i ? { ...it, [k]: v } : it)) }));
@@ -1123,11 +1446,21 @@ function SheetOrcamento({ inicial, orcamentos, vendedoras = [], vendedorPadrao =
     onShare({ titulo: `Orçamento Nº ${o.numero}`, texto: txt });
   };
 
+  const faltaCliente = () => {
+    if (!o.clienteId) {
+      setErroCli("Escolha um cliente cadastrado — ou cadastre na hora, no botão abaixo.");
+      onToast && onToast("Só dá para agendar para cliente cadastrado.");
+      return true;
+    }
+    return false;
+  };
   const tentarSalvar = () => {
+    if (faltaCliente()) return;
     if (!o.endereco || !o.endereco.trim()) { setErroEnd(true); onToast && onToast("O endereço é obrigatório."); return; }
     onSalvar(o);
   };
   const abrirPreview = () => {
+    if (faltaCliente()) return;
     if (!o.endereco || !o.endereco.trim()) { setErroEnd(true); onToast && onToast("Preencha o endereço para gerar o orçamento."); return; }
     onPreview && onPreview(o);
   };
@@ -1138,20 +1471,16 @@ function SheetOrcamento({ inicial, orcamentos, vendedoras = [], vendedorPadrao =
         <div className="vg-sheet-status"><Badge st={ORC_STATUS[o.status]} big /></div>
       )}
 
-      <Campo label="Cliente">
-        <input className="vg-in" value={o.cliente} onChange={(e) => set("cliente", e.target.value)} placeholder="Nome do cliente" />
-      </Campo>
+      <SeletorCliente clientes={clientes} clienteId={o.clienteId} onSelecionar={escolherCliente}
+        onCriarCliente={onCriarCliente} erro={erroCli} />
       <div className="vg-row2">
-        <Campo label="Telefone" icon={<Phone size={14} />}>
-          <input className="vg-in" value={o.telefone} onChange={(e) => set("telefone", e.target.value)} placeholder="(00) 00000-0000" inputMode="tel" />
-        </Campo>
         <Campo label="Data da visita" icon={<CalendarClock size={14} />}>
           <input type="date" className="vg-in" value={o.dataVisita} onChange={(e) => set("dataVisita", e.target.value)} />
         </Campo>
+        <Campo label="Horário da visita" icon={<Clock size={14} />}>
+          <input type="time" className="vg-in" value={o.horaVisita || ""} onChange={(e) => set("horaVisita", e.target.value)} />
+        </Campo>
       </div>
-      <Campo label="Horário da visita" icon={<Clock size={14} />}>
-        <input type="time" className="vg-in" value={o.horaVisita || ""} onChange={(e) => set("horaVisita", e.target.value)} />
-      </Campo>
       <Campo label="Endereço — rua e nº *" icon={<MapPin size={14} />}>
         <input
           className={"vg-in" + (erroEnd ? " vg-in-erro" : "")}
@@ -1274,13 +1603,14 @@ function SheetOrcamento({ inicial, orcamentos, vendedoras = [], vendedorPadrao =
 }
 
 /* ============ sheet de OS ============ */
-function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
+function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, onSalvar, onExcluir, onShare, onToast, onFechar }) {
   const novo = inicial.novo;
+  const [erroCli, setErroCli] = useState("");
   const [o, setO] = useState(() =>
     novo
       ? {
-          id: uid(), numero: nextNumero(ordens), cliente: "", telefone: "",
-          endereco: "", bairro: "", descricao: "", itens: [], dataServico: todayStr(), horaServico: "",
+          id: uid(), numero: nextNumero(ordens), ...dadosDoCliente(inicial.cliente),
+          descricao: "", itens: [], dataServico: todayStr(), horaServico: "",
           status: "agendada", observacoes: "", valor: "", materiais: [], criadoEm: todayStr(),
         }
       : {
@@ -1297,6 +1627,14 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
     setO((p) => ({ ...p, materiais: [...p.materiais, { id: uid(), descricao: "", qtd: 1, unidade: "UN", separado: false }] }));
   const delMat = (i) => setO((p) => ({ ...p, materiais: p.materiais.filter((_, idx) => idx !== i) }));
   const nSeparados = o.materiais.filter((m) => m.separado).length;
+  const tentarSalvar = () => {
+    if (!o.clienteId) {
+      setErroCli("Escolha um cliente cadastrado — ou cadastre na hora, no botão abaixo.");
+      onToast && onToast("Só dá para agendar serviço para cliente cadastrado.");
+      return;
+    }
+    onSalvar(o);
+  };
 
   const compartilhar = () => {
     let txt = `*VIGIAR — Ordem de Serviço Nº ${o.numero}*\n\n`;
@@ -1320,17 +1658,12 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
       {!novo && <div className="vg-sheet-status"><Badge st={OS_STATUS[o.status]} big /></div>}
       {o.orcamentoNum && <div className="vg-from">Gerada do orçamento Nº {o.orcamentoNum}</div>}
 
-      <Campo label="Cliente">
-        <input className="vg-in" value={o.cliente} onChange={(e) => set("cliente", e.target.value)} placeholder="Nome do cliente" />
+      <SeletorCliente clientes={clientes} clienteId={o.clienteId}
+        onSelecionar={(c) => { setO((p) => ({ ...p, ...dadosDoCliente(c) })); setErroCli(""); }}
+        onCriarCliente={onCriarCliente} erro={erroCli} />
+      <Campo label="Data do serviço" icon={<CalendarClock size={14} />}>
+        <input type="date" className="vg-in" value={o.dataServico} onChange={(e) => set("dataServico", e.target.value)} />
       </Campo>
-      <div className="vg-row2">
-        <Campo label="Telefone" icon={<Phone size={14} />}>
-          <input className="vg-in" value={o.telefone} onChange={(e) => set("telefone", e.target.value)} placeholder="(00) 00000-0000" inputMode="tel" />
-        </Campo>
-        <Campo label="Data do serviço" icon={<CalendarClock size={14} />}>
-          <input type="date" className="vg-in" value={o.dataServico} onChange={(e) => set("dataServico", e.target.value)} />
-        </Campo>
-      </div>
       <div className="vg-row2">
         <Campo label="Horário do serviço" icon={<Clock size={14} />}>
           <input type="time" className="vg-in" value={o.horaServico || ""} onChange={(e) => set("horaServico", e.target.value)} />
@@ -1387,7 +1720,7 @@ function SheetOS({ inicial, ordens, onSalvar, onExcluir, onShare, onFechar }) {
       )}
 
       <div className="vg-sheet-foot">
-        <button className="vg-btn vg-btn-primary" onClick={() => onSalvar(o)}><Check size={16} /> Salvar</button>
+        <button className="vg-btn vg-btn-primary" onClick={tentarSalvar}><Check size={16} /> Salvar</button>
         {!novo && (
           <>
             <button className="vg-btn vg-btn-ghost" onClick={compartilhar}><Share2 size={16} /> Enviar</button>
@@ -1793,6 +2126,29 @@ function Estilos() {
 .vg-alerta-txt strong{font-size:14px}
 .vg-alerta-txt span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vg-chev{transform:rotate(180deg);color:#c2ccda;flex-shrink:0}
+.vg-cli-nome{display:inline-flex;align-items:center;gap:9px;font-size:16px;font-weight:700}
+.vg-card-tel{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);font-weight:600}
+.vg-cliente-sel{display:flex;align-items:center;gap:10px;background:#e4eefb;border:1px solid #cfe0f7;border-radius:13px;padding:10px;margin-bottom:12px}
+.vg-cliente-info{flex:1;display:flex;align-items:center;gap:10px;min-width:0}
+.vg-cliente-info div{display:flex;flex-direction:column;min-width:0}
+.vg-cliente-info strong{font-size:15px}
+.vg-cliente-info span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vg-cliente-trocar{flex:0 0 auto;padding:9px 14px;font-size:13px}
+.vg-cliente-box{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:12px;margin-bottom:12px}
+.vg-cliente-box.erro{border-color:var(--alert);box-shadow:0 0 0 3px rgba(220,38,38,.10)}
+.vg-cliente-lista{max-height:220px;overflow-y:auto;margin:9px 0}
+.vg-cliente-op{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);padding:9px 2px;cursor:pointer}
+.vg-cliente-op:last-child{border-bottom:none}
+.vg-cliente-op-txt{display:flex;flex-direction:column;min-width:0}
+.vg-cliente-op-txt strong{font-size:14px}
+.vg-cliente-op-txt span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vg-cliente-novo{display:flex;flex-direction:column;gap:8px;margin-top:9px}
+.vg-hist{margin-top:22px;padding-top:6px;border-top:1px solid var(--line)}
+.vg-hist .vg-stats{margin-bottom:12px}
+.vg-hist-item{width:100%;display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);
+  border-radius:12px;padding:10px 12px;margin-bottom:8px;text-align:left;cursor:pointer}
+.vg-hist-data{font-size:13px;color:var(--muted);font-weight:600}
+.vg-hist-val{margin-left:auto;font-size:14px;font-weight:700}
 .vg-filtro-dia{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px}
 .vg-filtro-dia.ativo{display:block}
 .vg-filtro-dia-btn{position:relative;display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);

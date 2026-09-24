@@ -32,7 +32,7 @@ export async function carregarTudo() {
     .select('colecao, id, dados')
     .eq('excluido', false)
   if (error) throw error
-  const out = { orcamentos: [], ordens: [], config: {} }
+  const out = { orcamentos: [], ordens: [], clientes: [], config: {} }
   for (const r of data || []) {
     if (r.colecao === 'config') out.config[r.id] = r.dados
     else if (out[r.colecao]) out[r.colecao].push(r.dados)
