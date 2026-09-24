@@ -538,13 +538,6 @@ function App() {
     setToast(existe ? "Cliente atualizado." : "Cliente cadastrado.");
     return cli;
   };
-  // Cadastro rápido feito de dentro do orçamento/OS: salva e devolve o cliente.
-  const criarClienteRapido = (dados) => {
-    const cli = { id: uid(), criadoEm: todayStr(), ...dados };
-    updClientes([...clientes, cli]);
-    setToast(`Cliente ${cli.nome} cadastrado.`);
-    return cli;
-  };
   const excluirCliente = (id) => {
     const temOrc = orcamentos.some((o) => o.clienteId === id);
     const temOs = ordens.some((o) => o.clienteId === id);
@@ -771,7 +764,6 @@ function App() {
           inicial={orcAberto}
           orcamentos={orcamentos}
           clientes={clientes}
-          onCriarCliente={criarClienteRapido}
           papel={papel}
           tecnicos={tecnicos}
           quemSou={meuNome || meuEmail}
@@ -791,7 +783,6 @@ function App() {
           inicial={osAberta}
           ordens={ordens}
           clientes={clientes}
-          onCriarCliente={criarClienteRapido}
           papel={papel}
           tecnicos={tecnicos}
           quemSou={meuNome || meuEmail}
@@ -1101,11 +1092,11 @@ function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExclu
   );
 }
 
-// Seletor de cliente usado no orçamento e na OS. Sem cliente, não dá para salvar.
-function SeletorCliente({ clientes, clienteId, onSelecionar, onCriarCliente, erro }) {
+// Seletor de cliente usado no orçamento e na OS. Só escolhe quem já está cadastrado:
+// o cadastro de cliente é feito exclusivamente na aba Clientes.
+function SeletorCliente({ clientes, clienteId, onSelecionar, erro }) {
   const [abrindo, setAbrindo] = useState(false);
   const [busca, setBusca] = useState("");
-  const [novo, setNovo] = useState(null); // {nome, telefone, endereco, bairro}
   const cli = clientes.find((x) => x.id === clienteId);
 
   const achados = useMemo(() => {
@@ -1116,11 +1107,7 @@ function SeletorCliente({ clientes, clienteId, onSelecionar, onCriarCliente, err
       .slice(0, 30);
   }, [clientes, busca]);
 
-  const escolher = (c) => { onSelecionar(c); setAbrindo(false); setBusca(""); setNovo(null); };
-  const cadastrar = () => {
-    if (!novo.nome.trim()) return;
-    escolher(onCriarCliente({ ...novo, nome: novo.nome.trim() }));
-  };
+  const escolher = (c) => { onSelecionar(c); setAbrindo(false); setBusca(""); };
 
   if (cli && !abrindo) {
     return (
@@ -1140,39 +1127,29 @@ function SeletorCliente({ clientes, clienteId, onSelecionar, onCriarCliente, err
   return (
     <div className={"vg-cliente-box" + (erro ? " erro" : "")}>
       <div className="vg-campo-l"><UserRound size={14} /> Cliente * (só cadastrados)</div>
-      {novo ? (
-        <div className="vg-cliente-novo">
-          <input className="vg-in" autoFocus value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} placeholder="Nome ou empresa *" />
-          <input className="vg-in" value={novo.telefone} onChange={(e) => setNovo({ ...novo, telefone: e.target.value })} placeholder="Telefone" inputMode="tel" />
-          <input className="vg-in" value={novo.endereco} onChange={(e) => setNovo({ ...novo, endereco: e.target.value })} placeholder="Endereço — rua e nº" />
-          <input className="vg-in" value={novo.bairro} onChange={(e) => setNovo({ ...novo, bairro: e.target.value })} placeholder="Bairro" />
-          <div className="vg-acao-row">
-            <button className="vg-btn vg-btn-primary" onClick={cadastrar}><Check size={16} /> Cadastrar e usar</button>
-            <button className="vg-btn vg-btn-ghost" onClick={() => setNovo(null)}>Cancelar</button>
+      <input className="vg-in" autoFocus={abrindo} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar cliente cadastrado…" />
+      <div className="vg-cliente-lista">
+        {achados.length === 0 && (
+          <div className="vg-itens-vazio">
+            {clientes.length === 0
+              ? "Nenhum cliente cadastrado. Cadastre primeiro na aba Clientes."
+              : `Nenhum cliente encontrado para "${busca}". Se for cliente novo, cadastre na aba Clientes.`}
           </div>
+        )}
+        {achados.map((c) => (
+          <button key={c.id} className="vg-cliente-op" onClick={() => escolher(c)}>
+            <span className="vg-vend-av sm">{String(c.nome || "?").charAt(0).toUpperCase()}</span>
+            <span className="vg-cliente-op-txt">
+              <strong>{c.nome}</strong>
+              <span>{[c.telefone, c.endereco].filter(Boolean).join(" · ")}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+      {cli && (
+        <div className="vg-acao-row">
+          <button className="vg-btn vg-btn-ghost" onClick={() => setAbrindo(false)}>Cancelar</button>
         </div>
-      ) : (
-        <>
-          <input className="vg-in" autoFocus={abrindo} value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar cliente cadastrado…" />
-          <div className="vg-cliente-lista">
-            {achados.length === 0 && <div className="vg-itens-vazio">Nenhum cliente encontrado.</div>}
-            {achados.map((c) => (
-              <button key={c.id} className="vg-cliente-op" onClick={() => escolher(c)}>
-                <span className="vg-vend-av sm">{String(c.nome || "?").charAt(0).toUpperCase()}</span>
-                <span className="vg-cliente-op-txt">
-                  <strong>{c.nome}</strong>
-                  <span>{[c.telefone, c.endereco].filter(Boolean).join(" · ")}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="vg-acao-row">
-            <button className="vg-btn vg-btn-ghost" onClick={() => setNovo({ nome: busca, telefone: "", endereco: "", bairro: "" })}>
-              <Plus size={16} /> Cadastrar novo cliente
-            </button>
-            {cli && <button className="vg-btn vg-btn-ghost" onClick={() => setAbrindo(false)}>Cancelar</button>}
-          </div>
-        </>
       )}
       {erro && <span className="vg-erro">{erro}</span>}
     </div>
@@ -1480,7 +1457,7 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
 }
 
 /* ============ sheet de orçamento ============ */
-function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
+function SheetOrcamento({ inicial, orcamentos, clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [o, setO] = useState(() =>
@@ -1541,7 +1518,7 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
 
   const faltaCliente = () => {
     if (!o.clienteId) {
-      setErroCli("Escolha um cliente cadastrado — ou cadastre na hora, no botão abaixo.");
+      setErroCli("Escolha um cliente cadastrado. Se for cliente novo, cadastre antes na aba Clientes.");
       onToast && onToast("Só dá para agendar para cliente cadastrado.");
       return true;
     }
@@ -1564,8 +1541,7 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
         <div className="vg-sheet-status"><Badge st={ORC_STATUS[o.status]} big /></div>
       )}
 
-      <SeletorCliente clientes={clientes} clienteId={o.clienteId} onSelecionar={escolherCliente}
-        onCriarCliente={onCriarCliente} erro={erroCli} />
+      <SeletorCliente clientes={clientes} clienteId={o.clienteId} onSelecionar={escolherCliente} erro={erroCli} />
       <div className="vg-row2">
         <Campo label="Data da visita" icon={<CalendarClock size={14} />}>
           <input type="date" className="vg-in" value={o.dataVisita} onChange={(e) => set("dataVisita", e.target.value)} />
@@ -1780,7 +1756,7 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
 }
 
 /* ============ sheet de OS ============ */
-function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onShare, onToast, onFechar }) {
+function SheetOS({ inicial, ordens, clientes = [], papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onShare, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [erroCli, setErroCli] = useState("");
@@ -1826,7 +1802,7 @@ function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, papel = "escr
   };
   const tentarSalvar = () => {
     if (!o.clienteId) {
-      setErroCli("Escolha um cliente cadastrado — ou cadastre na hora, no botão abaixo.");
+      setErroCli("Escolha um cliente cadastrado. Se for cliente novo, cadastre antes na aba Clientes.");
       onToast && onToast("Só dá para agendar serviço para cliente cadastrado.");
       return;
     }
@@ -1860,8 +1836,7 @@ function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, papel = "escr
       {o.orcamentoNum && <div className="vg-from">Gerada do orçamento Nº {o.orcamentoNum}</div>}
 
       <SeletorCliente clientes={clientes} clienteId={o.clienteId}
-        onSelecionar={(c) => { setO((p) => ({ ...p, ...dadosDoCliente(c) })); setErroCli(""); }}
-        onCriarCliente={onCriarCliente} erro={erroCli} />
+        onSelecionar={(c) => { setO((p) => ({ ...p, ...dadosDoCliente(c) })); setErroCli(""); }} erro={erroCli} />
       <Campo label="Data do serviço" icon={<CalendarClock size={14} />}>
         <input type="date" className="vg-in" value={o.dataServico} onChange={(e) => set("dataServico", e.target.value)} />
       </Campo>
