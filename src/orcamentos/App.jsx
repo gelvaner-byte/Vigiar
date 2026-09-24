@@ -5,7 +5,7 @@ import {
   CalendarClock, CircleCheck, Pencil, ThumbsUp, ThumbsDown, Copy, Download,
   UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink, ListChecks, ChevronRight, Search
 } from "lucide-react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "./supabaseOrc";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
   assinarMudancas, lerCache, gravarCache,

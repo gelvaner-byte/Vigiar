@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabaseClient'
+import { supabase } from './supabaseOrc'
 
 const TABELA = 'orc_registros'
 const CACHE = 'vigiar:orc:cache:v1'

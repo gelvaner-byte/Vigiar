@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import Login from '../components/Login'
-import { supabase, isSupabaseConfigured } from '../lib/supabaseClient'
-import '../index.css'
+import Login from './Login.jsx'
+import { supabase, isSupabaseConfigured } from './supabaseOrc'
 
-// Mesmo login (senha única) do app financeiro.
+// Login por e-mail + senha. A sessão vive só enquanto o app está aberto:
+// fechou o navegador/app, na próxima vez pede login de novo.
 function Portao() {
   const [session, setSession] = useState(null)
   const [carregando, setCarregando] = useState(true)
