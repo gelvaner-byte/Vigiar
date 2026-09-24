@@ -788,6 +788,7 @@ function App() {
         <SheetOS
           inicial={osAberta}
           ordens={ordens}
+          orcamentos={orcamentos}
           clientes={clientes}
           papel={papel}
           tecnicos={tecnicos}
@@ -979,6 +980,32 @@ function compromissosPorDia(ordens, orcamentos) {
   orcamentos.forEach((o) => { if (o.status === "agendado") add(o.dataVisita, o.horaVisita, Number(o.duracaoVisita) || DURACAO_VISITA); });
   return mapa;
 }
+
+// Procura serviço/visita que ocupe o mesmo horário. Devolve o conflito ou null.
+function acharConflito({ ordens = [], orcamentos = [], data, hora, duracao, ignorarOsId, ignorarOrcId, soServicos = false }) {
+  if (!data || !hora) return null;
+  const ini = horaParaNum(hora);
+  if (ini == null) return null;
+  const fim = ini + (Number(duracao) || DURACAO_PADRAO);
+  const bate = (h, dur) => {
+    const i = horaParaNum(h);
+    if (i == null) return false;
+    return ini < i + dur && fim > i;
+  };
+  const os = ordens.find((o) =>
+    o.id !== ignorarOsId && o.status === "agendada" && o.dataServico === data &&
+    bate(o.horaServico, Number(o.duracaoHoras) || DURACAO_PADRAO));
+  if (os) return { tipo: "servico", item: os };
+  if (soServicos) return null;
+  const orc = orcamentos.find((o) =>
+    o.id !== ignorarOrcId && o.status === "agendado" && o.dataVisita === data &&
+    bate(o.horaVisita, Number(o.duracaoVisita) || DURACAO_VISITA));
+  return orc ? { tipo: "visita", item: orc } : null;
+}
+const textoConflito = (c) =>
+  c.tipo === "servico"
+    ? `Já existe a OS Nº ${c.item.numero} (${c.item.cliente || "sem nome"}) às ${c.item.horaServico || "—"}, com ${fmtDuracao(c.item.duracaoHoras || DURACAO_PADRAO)}.`
+    : `Já existe a visita do orçamento Nº ${c.item.numero} (${c.item.cliente || "sem nome"}) às ${c.item.horaVisita || "—"}.`;
 
 // Opções de duração usadas nos campos "tempo da visita" e "tempo do serviço".
 const DURACOES = [
@@ -1729,6 +1756,11 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
     const [primeira] = sugerirHorarios(ordens, orcamentos, { quantidade: 1 });
     return primeira ? primeira.hora : "08:00";
   });
+  // Não deixa gerar OS por cima de outro serviço já agendado.
+  const conflitoOS = useMemo(
+    () => acharConflito({ ordens, data: dataServico, hora: horaServico, duracao: duracaoServico, soServicos: true }),
+    [ordens, dataServico, horaServico, duracaoServico],
+  );
   const [erroEnd, setErroEnd] = useState(false);
   const [erroCli, setErroCli] = useState("");
   const set = (k, v) => setO((p) => ({ ...p, [k]: v }));
@@ -1827,11 +1859,18 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
             {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Campo>
-        <Campo label="Tempo previsto do serviço" icon={<Wrench size={14} />}>
-          <select className="vg-in" value={o.duracaoServico ?? DURACAO_PADRAO} onChange={(e) => set("duracaoServico", Number(e.target.value))}>
-            {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </Campo>
+        {/* O tempo do serviço só faz sentido depois da visita, quando já se sabe o que tem para fazer. */}
+        {o.status !== "agendado" ? (
+          <Campo label="Tempo previsto do serviço" icon={<Wrench size={14} />}>
+            <select className="vg-in" value={o.duracaoServico ?? DURACAO_PADRAO} onChange={(e) => set("duracaoServico", Number(e.target.value))}>
+              {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </Campo>
+        ) : (
+          <Campo label="Tempo previsto do serviço" icon={<Wrench size={14} />}>
+            <div className="vg-depois">Definido depois da visita</div>
+          </Campo>
+        )}
       </div>
       <Campo label="Endereço — rua e nº *" icon={<MapPin size={14} />}>
         <input
@@ -2018,8 +2057,17 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
                 <input type="date" className="vg-in" value={dataServico} onChange={(e) => setDataServico(e.target.value)} />
                 <input type="time" className="vg-in" value={horaServico} onChange={(e) => setHoraServico(e.target.value)} />
               </div>
+              {conflitoOS && (
+                <div className="vg-conflito">
+                  <AlertTriangle size={16} />
+                  <span><b>Horário ocupado.</b> {textoConflito(conflitoOS)} Escolha outro horário.</span>
+                </div>
+              )}
               <div className="vg-acao-row" style={{ marginTop: 9 }}>
-                <button className="vg-btn vg-btn-green" onClick={() => onGerarOS(o, dataServico, horaServico)}><Wrench size={16} /> Gerar OS</button>
+                <button className="vg-btn vg-btn-green" disabled={Boolean(conflitoOS)}
+                  onClick={() => (conflitoOS ? onToast && onToast("Esse horário já está ocupado.") : onGerarOS(o, dataServico, horaServico))}>
+                  <Wrench size={16} /> Gerar OS
+                </button>
                 <button className="vg-btn vg-btn-ghost" onClick={mandarSugestoes}><Send size={16} /> Mandar opções</button>
               </div>
               {!diaUtil(dataServico) && (
@@ -2060,7 +2108,7 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
 }
 
 /* ============ sheet de OS ============ */
-function SheetOS({ inicial, ordens, clientes = [], papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onShare, onToast, onFechar }) {
+function SheetOS({ inicial, ordens, orcamentos = [], clientes = [], papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onShare, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [erroCli, setErroCli] = useState("");
@@ -2104,10 +2152,22 @@ function SheetOS({ inicial, ordens, clientes = [], papel = "escritorio", tecnico
     onSalvar({ ...o, status: "concluida", concluidaEm: new Date().toISOString(), concluidaPor: quemSou || "" });
     onToast && onToast("Serviço concluído e enviado para o escritório.");
   };
+  // Conflito de horário: não deixa marcar serviço por cima de outro já agendado.
+  const conflito = useMemo(() => (
+    o.status !== "agendada" ? null : acharConflito({
+      ordens, orcamentos: [], data: o.dataServico, hora: o.horaServico,
+      duracao: o.duracaoHoras ?? DURACAO_PADRAO, ignorarOsId: o.id, soServicos: true,
+    })
+  ), [ordens, o.dataServico, o.horaServico, o.duracaoHoras, o.id, o.status]);
+
   const tentarSalvar = () => {
     if (!o.clienteId) {
       setErroCli("Escolha um cliente cadastrado. Se for cliente novo, cadastre antes na aba Clientes.");
       onToast && onToast("Só dá para agendar serviço para cliente cadastrado.");
+      return;
+    }
+    if (conflito) {
+      onToast && onToast("Esse horário já está ocupado. Escolha outro.");
       return;
     }
     onSalvar(o);
@@ -2160,10 +2220,20 @@ function SheetOS({ inicial, ordens, clientes = [], papel = "escritorio", tecnico
         )}
       </div>
       <Campo label="Tempo do serviço" icon={<Clock size={14} />}>
-        <select className="vg-in" value={o.duracaoHoras ?? DURACAO_PADRAO} onChange={(e) => set("duracaoHoras", Number(e.target.value))}>
+        <select className={"vg-in" + (conflito ? " vg-in-erro" : "")} value={o.duracaoHoras ?? DURACAO_PADRAO}
+          onChange={(e) => set("duracaoHoras", Number(e.target.value))}>
           {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </Campo>
+      {conflito && (
+        <div className="vg-conflito">
+          <AlertTriangle size={16} />
+          <span><b>Horário ocupado.</b> {textoConflito(conflito)} Mude a data, o horário ou o tempo do serviço.</span>
+        </div>
+      )}
+      {o.status === "agendada" && !o.horaServico && (
+        <div className="vg-itens-vazio">Sem horário definido, o app não consegue conferir conflito com outros serviços.</div>
+      )}
       {!tecnico && (
         <Campo label="Técnico que executa" icon={<Wrench size={14} />}>
           <select className="vg-in" value={o.tecnicoEmail || ""}
@@ -2783,6 +2853,11 @@ function Estilos() {
 .vg-mat-min .vg-in{width:62px;padding:6px 8px;font-size:13px}
 .vg-mat-devolver{font-size:12px;font-weight:700;color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:3px 9px}
 .vg-mat-resumo{display:flex;align-items:center;gap:7px;background:#fdead8;color:#c25605;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:700;margin:2px 0 14px}
+.vg-conflito{display:flex;align-items:flex-start;gap:8px;background:var(--alert-bg);border:1px solid #f3c7c7;color:#b91c1c;
+  border-radius:12px;padding:11px 12px;font-size:13px;line-height:1.45;margin:2px 0 12px}
+.vg-conflito svg{flex-shrink:0;margin-top:1px}
+.vg-btn:disabled{opacity:.5}
+.vg-depois{border:1px dashed var(--line);border-radius:11px;padding:11px 12px;font-size:13px;color:var(--muted);background:#fffaf5}
 .vg-modo{margin-bottom:12px;padding-bottom:0}
 .vg-modo .vg-chip{display:inline-flex;align-items:center;gap:6px}
 .vg-cal-grade{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:12px 0 10px}
