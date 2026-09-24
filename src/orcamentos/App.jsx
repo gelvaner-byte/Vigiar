@@ -604,7 +604,7 @@ function App() {
     }
   };
 
-  const gerarOSdeOrcamento = (orc, dataServico) => {
+  const gerarOSdeOrcamento = (orc, dataServico, horaServico = "") => {
     const os = {
       id: uid(),
       numero: nextNumero(ordens),
@@ -620,7 +620,9 @@ function App() {
       valor: itemsTotal(orc.itens) || "",
       materiais: materiaisOS({ itens: orc.itens }),
       dataServico,
-      horaServico: "",
+      horaServico,
+      tecnicoEmail: orc.tecnicoEmail || "",
+      tecnicoNome: orc.tecnicoNome || "",
       status: "agendada",
       observacoes: "",
       criadoEm: todayStr(),
@@ -628,6 +630,7 @@ function App() {
     updOs([...ordens, os]);
     setOrcAberto(null);
     setView("servicos");
+    setToast(`OS Nº ${os.numero} agendada para ${fmtDate(dataServico)}${horaServico ? ` às ${horaServico}` : ""}.`);
   };
 
   const vendAtiva = vendedoras.find((v) => v.id === vendAtivaId) || null;
@@ -764,6 +767,7 @@ function App() {
         <SheetOrcamento
           inicial={orcAberto}
           orcamentos={orcamentos}
+          ordens={ordens}
           clientes={clientes}
           papel={papel}
           tecnicos={tecnicos}
@@ -946,6 +950,56 @@ const historicoCliente = (clienteId, orcamentos, ordens) => ({
   ordens: ordens.filter((o) => o.clienteId === clienteId)
     .sort((a, b) => (b.dataServico || "").localeCompare(a.dataServico || "")),
 });
+/* ============ agenda: horários livres ============ */
+// Expediente: segunda a sexta, das 08h às 18h.
+const EXPEDIENTE = { hInicio: 8, hFim: 18, dias: [1, 2, 3, 4, 5] };
+const DURACAO_PADRAO = 2; // horas por serviço
+const DURACAO_VISITA = 1;
+
+const horaParaNum = (h) => {
+  const [hh, mm] = String(h || "").split(":").map(Number);
+  return Number.isFinite(hh) ? hh + (mm || 0) / 60 : null;
+};
+const numParaHora = (n) => `${String(Math.floor(n)).padStart(2, "0")}:${String(Math.round((n % 1) * 60)).padStart(2, "0")}`;
+const diaSemanaDe = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).getDay(); };
+const diaUtil = (iso) => EXPEDIENTE.dias.includes(diaSemanaDe(iso));
+
+// O que já está marcado em cada dia, como faixas de horário ocupadas.
+function compromissosPorDia(ordens, orcamentos) {
+  const mapa = {};
+  const add = (data, hora, dur) => {
+    if (!data) return;
+    const ini = horaParaNum(hora);
+    (mapa[data] = mapa[data] || []).push(
+      ini == null ? { ini: EXPEDIENTE.hInicio, fim: EXPEDIENTE.hInicio + dur, semHora: true } : { ini, fim: ini + dur },
+    );
+  };
+  ordens.forEach((o) => { if (o.status === "agendada") add(o.dataServico, o.horaServico, Number(o.duracaoHoras) || DURACAO_PADRAO); });
+  orcamentos.forEach((o) => { if (o.status === "agendado") add(o.dataVisita, o.horaVisita, DURACAO_VISITA); });
+  return mapa;
+}
+
+// Próximos horários livres, em dia útil e dentro do expediente.
+function sugerirHorarios(ordens, orcamentos, { duracao = DURACAO_PADRAO, quantidade = 6, aPartirDe = todayStr() } = {}) {
+  const ocupado = compromissosPorDia(ordens, orcamentos);
+  const livres = [];
+  for (let i = 1; i <= 30 && livres.length < quantidade; i++) {
+    const data = addDaysStr(aPartirDe, i);
+    if (!diaUtil(data)) continue;
+    const doDia = ocupado[data] || [];
+    let achouNoDia = 0;
+    for (let h = EXPEDIENTE.hInicio; h + duracao <= EXPEDIENTE.hFim && achouNoDia < 2; h += 1) {
+      const conflita = doDia.some((c) => h < c.fim && h + duracao > c.ini);
+      if (conflita) continue;
+      livres.push({ data, hora: numParaHora(h) });
+      achouNoDia += 1;
+      if (livres.length >= quantidade) break;
+      h += duracao - 1; // não sugere horários colados
+    }
+  }
+  return livres;
+}
+
 const ORIGENS = ["Instagram", "Facebook", "Google", "WhatsApp (direto)", "Indicação", "Placa / carro", "Cliente antigo", "Passando na rua", "Outro"];
 const buscaTexto = (c) => [c.nome, c.telefone, c.endereco, c.bairro, c.documento].filter(Boolean).join(" ").toLowerCase();
 
@@ -1529,7 +1583,7 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
 }
 
 /* ============ sheet de orçamento ============ */
-function SheetOrcamento({ inicial, orcamentos, clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
+function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [o, setO] = useState(() =>
@@ -1543,7 +1597,19 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], vendedoras = [], v
       : { ...inicial, itens: inicial.itens ? [...inicial.itens] : [] }
   );
   const [prazo, setPrazo] = useState(addDaysStr(todayStr(), 2));
-  const [dataServico, setDataServico] = useState(addDaysStr(todayStr(), 2));
+  // Sugestões de horário livre para executar o serviço (seg-sex, 8h-18h).
+  const sugestoes = useMemo(
+    () => sugerirHorarios(ordens, orcamentos, { duracao: DURACAO_PADRAO, quantidade: 6 }),
+    [ordens, orcamentos],
+  );
+  const [dataServico, setDataServico] = useState(() => {
+    const [primeira] = sugerirHorarios(ordens, orcamentos, { quantidade: 1 });
+    return primeira ? primeira.data : addDaysStr(todayStr(), 2);
+  });
+  const [horaServico, setHoraServico] = useState(() => {
+    const [primeira] = sugerirHorarios(ordens, orcamentos, { quantidade: 1 });
+    return primeira ? primeira.hora : "08:00";
+  });
   const [erroEnd, setErroEnd] = useState(false);
   const [erroCli, setErroCli] = useState("");
   const set = (k, v) => setO((p) => ({ ...p, [k]: v }));
@@ -1586,6 +1652,20 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], vendedoras = [], v
     if (resumoPagamento(o)) txt += `\n💳 ${resumoPagamento(o)}`;
     if (o.observacoes) txt += `\n\nObs.: ${o.observacoes}`;
     onShare({ titulo: `Orçamento Nº ${o.numero}`, texto: txt });
+  };
+
+  // Manda 3 opções de horário para o cliente escolher pelo WhatsApp.
+  const mandarSugestoes = () => {
+    if (!sugestoes.length) { onToast && onToast("Sem horário livre nos próximos 30 dias."); return; }
+    const opcoes = sugestoes.slice(0, 3)
+      .map((s, i) => {
+        const rotulo = rotuloData(s.data);
+        const quando = rotulo.includes("/") ? rotulo : `${rotulo} (${fmtDate(s.data)})`;
+        return `${i + 1}) ${quando} às ${s.hora}`;
+      })
+      .join("\n");
+    const txt = `*VIGIAR — Segurança eletrônica*\n\nOlá${o.cliente ? `, ${String(o.cliente).split(" ")[0]}` : ""}! Seu orçamento Nº ${o.numero} foi autorizado. 🎉\n\nTenho estes horários livres para a instalação:\n${opcoes}\n\nQual fica melhor para você? Assim que confirmar, já deixo agendado.\n\nAtendemos de segunda a sexta, das 8h às 18h.`;
+    onShare({ titulo: `Opções de agendamento — Orçamento Nº ${o.numero}`, texto: txt });
   };
 
   const faltaCliente = () => {
@@ -1788,11 +1868,31 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], vendedoras = [], v
           )}
           {o.status === "aprovado" && (
             <div className="vg-acao-box">
-              <label className="vg-acao-label">Gerar a ordem de serviço e agendar a execução:</label>
+              <label className="vg-acao-label">
+                Autorizado! Agora agende a execução. Sugestões de horário livre (seg a sex, 8h às 18h):
+              </label>
+              <div className="vg-sugestoes">
+                {sugestoes.length === 0 && <span className="vg-itens-vazio">Agenda cheia nos próximos 30 dias. Escolha a data na mão.</span>}
+                {sugestoes.map((s) => (
+                  <button key={s.data + s.hora}
+                    className={"vg-sug" + (dataServico === s.data && horaServico === s.hora ? " on" : "")}
+                    onClick={() => { setDataServico(s.data); setHoraServico(s.hora); }}>
+                    <b>{rotuloData(s.data)}</b>
+                    <span>{s.hora}</span>
+                  </button>
+                ))}
+              </div>
               <div className="vg-acao-row">
                 <input type="date" className="vg-in" value={dataServico} onChange={(e) => setDataServico(e.target.value)} />
-                <button className="vg-btn vg-btn-green" onClick={() => onGerarOS(o, dataServico)}><Wrench size={16} /> Gerar OS</button>
+                <input type="time" className="vg-in" value={horaServico} onChange={(e) => setHoraServico(e.target.value)} />
               </div>
+              <div className="vg-acao-row" style={{ marginTop: 9 }}>
+                <button className="vg-btn vg-btn-green" onClick={() => onGerarOS(o, dataServico, horaServico)}><Wrench size={16} /> Gerar OS</button>
+                <button className="vg-btn vg-btn-ghost" onClick={mandarSugestoes}><Send size={16} /> Mandar opções</button>
+              </div>
+              {!diaUtil(dataServico) && (
+                <span className="vg-erro">Atenção: {fmtDate(dataServico)} cai em fim de semana.</span>
+              )}
             </div>
           )}
         </div>
@@ -2546,6 +2646,13 @@ function Estilos() {
 .vg-mat-min .vg-in{width:62px;padding:6px 8px;font-size:13px}
 .vg-mat-devolver{font-size:12px;font-weight:700;color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:3px 9px}
 .vg-mat-resumo{display:flex;align-items:center;gap:7px;background:#fdead8;color:#c25605;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:700;margin:2px 0 14px}
+.vg-sugestoes{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:11px}
+.vg-sug{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--surface);border:1px solid var(--line);
+  border-radius:11px;padding:8px 12px;font-family:inherit;cursor:pointer;text-align:left}
+.vg-sug b{font-size:13px;color:var(--ink)}
+.vg-sug span{font-size:12px;color:var(--muted);font-weight:700}
+.vg-sug.on{border-color:var(--brand);background:#fdead8;box-shadow:0 0 0 3px rgba(226,100,10,.12)}
+.vg-sug.on b,.vg-sug.on span{color:var(--brand)}
 .vg-origem-row{padding:10px 2px;border-bottom:1px solid var(--line)}
 .vg-origem-row:last-child{border-bottom:none}
 .vg-origem-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px;font-size:14px}
