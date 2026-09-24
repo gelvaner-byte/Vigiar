@@ -71,6 +71,30 @@ const itemsTotal = (itens) =>
 const valorOS = (os) =>
   os.valor !== undefined && os.valor !== null && os.valor !== "" ? Number(os.valor) || 0 : itemsTotal(os.itens);
 
+const fmtDataHora = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} às ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+const FORMAS_PAGAMENTO = ["À vista", "Pix", "Dinheiro", "Cartão de débito", "Cartão de crédito", "Parcelado no cartão", "Boleto", "Transferência", "Combinar"];
+const resumoPagamento = (o) => {
+  if (!o.formaPagamento) return "";
+  const partes = [o.formaPagamento];
+  const n = Number(o.parcelas) || 0;
+  const entrada = Number(o.entrada) || 0;
+  const total = itemsTotal(o.itens);
+  if (n > 1) {
+    const base = Math.max(total - entrada, 0);
+    partes.push(`${n}x de ${brl(base / n)}`);
+  }
+  if (entrada > 0) partes.push(`entrada de ${brl(entrada)}`);
+  if (o.obsPagamento) partes.push(o.obsPagamento);
+  return partes.join(" · ");
+};
+
 // Materiais da OS. OS antigas (sem a lista) usam os itens do orçamento como ponto de partida.
 const materiaisOS = (os) =>
   Array.isArray(os.materiais)
@@ -252,7 +276,8 @@ function gerarOrcamentoBlob(orc) {
       y += 1; p.line(M, y, RIGHT, y, lineC, 0.4); y += 7.5;
       p.text(RIGHT - 44, y, "Valor Total", { size: 11.5, bold: true, align: "right" });
       p.text(RIGHT, y, brl(itemsTotal(orc.itens)), { size: 11.5, bold: true, align: "right" });
-      y += 11;
+      y += 8;
+      if (resumoPagamento(orc)) { p.text(M, y, `Pagamento: ${resumoPagamento(orc)}`, { size: 9.5, bold: true }); y += 6; }
       p.text(M, y, `Vendedor: ${orc.vendedor || "-"}`, { size: 9.2 });
       if (orc.observacoes) { y += 6; p.wrap(`Obs.: ${orc.observacoes}`, 9, false, RIGHT - M).forEach((ln, k) => p.text(M, y + k * 4.4, ln, { size: 9 })); }
       p.text(W / 2, 276, `ORÇAMENTO VÁLIDO POR ${orc.validadeDias || 7} DIAS!`, { size: 9.5, bold: true, align: "center", color: navy });
@@ -325,7 +350,8 @@ function desenharOrcamento(ctx, orc, S) {
   y += 7.5;
   T(RIGHT - 44, y, "Valor Total", 11.5, { bold: true, align: "right" });
   T(RIGHT, y, brl(itemsTotal(orc.itens)), 11.5, { bold: true, align: "right" });
-  y += 11;
+  y += 8;
+  if (resumoPagamento(orc)) { T(M, y, `Pagamento: ${resumoPagamento(orc)}`, 9.5, { bold: true }); y += 6; }
   T(M, y, `Vendedor: ${orc.vendedor || "-"}`, 9.2);
   if (orc.observacoes) { _cfont(ctx, 9, false, S); y += 6; _cwrap(ctx, `Obs.: ${orc.observacoes}`, mm(RIGHT - M)).forEach((ln, k) => T(M, y + k * 4.4, ln, 9)); }
   T(W / 2, 276, `ORÇAMENTO VÁLIDO POR ${orc.validadeDias || 7} DIAS!`, 9.5, { bold: true, align: "center", color: navy });
@@ -360,6 +386,8 @@ function App() {
   const [share, setShare] = useState(null); // {titulo, texto}
   const [toast, setToast] = useState("");
   const [vendedoras, setVendedoras] = useState([]);
+  const [equipe, setEquipe] = useState([]); // [{id, nome, email, papel}]
+  const [meuEmail, setMeuEmail] = useState("");
   const [vendAtivaId, setVendAtivaIdState] = useState(lerAtiva);
   const [perfilAberto, setPerfilAberto] = useState(false);
   const [aviso, setAviso] = useState(""); // faixa fixa de problema de conexão/salvamento
@@ -371,11 +399,13 @@ function App() {
     try {
       const d = await carregarTudo();
       const vend = (d.config.vendedoras && d.config.vendedoras.lista) || [];
+      const eq = (d.config.equipe && d.config.equipe.membros) || [];
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
       setClientes(d.clientes);
       setVendedoras(vend);
-      gravarCache({ orcamentos: d.orcamentos, ordens: d.ordens, clientes: d.clientes, vendedoras: vend });
+      setEquipe(eq);
+      gravarCache({ orcamentos: d.orcamentos, ordens: d.ordens, clientes: d.clientes, vendedoras: vend, equipe: eq });
       setAviso((a) => (a.startsWith("Sem conexão") ? "" : a));
     } catch (e) {
       console.error(e);
@@ -386,6 +416,7 @@ function App() {
           setOrdens(c.ordens || []);
           setClientes(c.clientes || []);
           setVendedoras(c.vendedoras || []);
+          setEquipe(c.equipe || []);
         }
       }
       setAviso("Sem conexão com o banco de dados. Mostrando a última cópia salva neste aparelho.");
@@ -399,6 +430,10 @@ function App() {
     recarregar();
     return assinarMudancas(() => recarregar());
   }, [recarregar]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setMeuEmail((data.session?.user?.email || "").toLowerCase()));
+  }, []);
 
   // Qualquer falha ao salvar vira um aviso fixo com botão "Tentar de novo".
   const falhaAoSalvar = (e) => {
@@ -421,6 +456,20 @@ function App() {
     setVendedoras(next);
     salvarConfig("vendedoras", { lista: next }).catch(falhaAoSalvar);
   };
+  const updEquipe = (next) => {
+    setEquipe(next);
+    salvarConfig("equipe", { membros: next }).catch(falhaAoSalvar);
+  };
+
+  // Papel de quem está logado: técnico só vê a agenda dele; o resto é escritório.
+  const euNaEquipe = equipe.find((m) => String(m.email || "").toLowerCase() === meuEmail);
+  const papel = euNaEquipe && euNaEquipe.papel === "tecnico" ? "tecnico" : "escritorio";
+  const tecnicos = equipe.filter((m) => m.papel === "tecnico");
+  const meuNome = euNaEquipe ? euNaEquipe.nome : "";
+  // Técnico vê o que está atribuído a ele e o que ainda não tem técnico definido.
+  const meuTrabalho = (x) => !x.tecnicoEmail || String(x.tecnicoEmail).toLowerCase() === meuEmail;
+  const orcamentosVisiveis = papel === "tecnico" ? orcamentos.filter(meuTrabalho) : orcamentos;
+  const ordensVisiveis = papel === "tecnico" ? ordens.filter(meuTrabalho) : ordens;
 
   const exportarBackup = () => {
     const dados = { app: "vigiar-orcamentos", exportadoEm: new Date().toISOString(), clientes, orcamentos, ordens, vendedoras };
@@ -624,11 +673,12 @@ function App() {
           </div>
         </div>
         <div className="vg-top-actions">
+          {papel === "tecnico" && <span className="vg-papel">Técnico</span>}
           <button className="vg-perfil" onClick={() => setPerfilAberto(true)}>
             <UserRound size={15} />
-            <span>{vendAtiva ? primeiroNome(vendAtiva.nome) : "Perfil"}</span>
+            <span>{papel === "tecnico" ? primeiroNome(meuNome) : vendAtiva ? primeiroNome(vendAtiva.nome) : "Perfil"}</span>
           </button>
-          {(atrasadosEnvio.length + visitasAtrasadas.length) > 0 && (
+          {papel === "escritorio" && (atrasadosEnvio.length + visitasAtrasadas.length) > 0 && (
             <button className="vg-bell" onClick={() => setView("hoje")}>
               <Bell size={18} />
               <span className="vg-bell-dot">{atrasadosEnvio.length + visitasAtrasadas.length}</span>
@@ -648,6 +698,18 @@ function App() {
       )}
 
       <main className="vg-main">
+        {papel === "tecnico" ? (
+          <Agenda
+            papel="tecnico"
+            orcamentos={orcamentosVisiveis}
+            ordens={ordensVisiveis}
+            onAbrirOrc={setOrcAberto}
+            onAbrirOs={setOsAberta}
+            onToggle={toggleTarefa}
+            onShare={setShare}
+          />
+        ) : (
+          <>
         {view === "hoje" && (
           <Hoje
             orcamentos={orcamentos}
@@ -676,27 +738,33 @@ function App() {
         {view === "servicos" && (
           <ListaOrdens ordens={ordens} onAbrir={setOsAberta} onShare={setShare} />
         )}
+          </>
+        )}
       </main>
 
-      <button
-        className="vg-fab"
-        onClick={() =>
-          view === "servicos" ? setOsAberta({ novo: true })
-            : view === "clientes" ? setCliAberto({ novo: true })
-              : setOrcAberto({ novo: true })
-        }
-        aria-label="Adicionar"
-      >
-        <Plus size={24} />
-      </button>
+      {papel === "escritorio" && (
+        <button
+          className="vg-fab"
+          onClick={() =>
+            view === "servicos" ? setOsAberta({ novo: true })
+              : view === "clientes" ? setCliAberto({ novo: true })
+                : setOrcAberto({ novo: true })
+          }
+          aria-label="Adicionar"
+        >
+          <Plus size={24} />
+        </button>
+      )}
 
-      <nav className="vg-nav">
-        <NavBtn ativo={view === "hoje"} onClick={() => setView("hoje")} icon={<Home size={20} />} label="Hoje" />
-        <NavBtn ativo={view === "agenda"} onClick={() => setView("agenda")} icon={<ListChecks size={20} />} label="Agenda" />
-        <NavBtn ativo={view === "clientes"} onClick={() => setView("clientes")} icon={<Users size={20} />} label="Clientes" />
-        <NavBtn ativo={view === "orcamentos"} onClick={() => setView("orcamentos")} icon={<FileText size={20} />} label="Orçamentos" />
-        <NavBtn ativo={view === "servicos"} onClick={() => setView("servicos")} icon={<Wrench size={20} />} label="Serviços" />
-      </nav>
+      {papel === "escritorio" && (
+        <nav className="vg-nav">
+          <NavBtn ativo={view === "hoje"} onClick={() => setView("hoje")} icon={<Home size={20} />} label="Hoje" />
+          <NavBtn ativo={view === "agenda"} onClick={() => setView("agenda")} icon={<ListChecks size={20} />} label="Agenda" />
+          <NavBtn ativo={view === "clientes"} onClick={() => setView("clientes")} icon={<Users size={20} />} label="Clientes" />
+          <NavBtn ativo={view === "orcamentos"} onClick={() => setView("orcamentos")} icon={<FileText size={20} />} label="Orçamentos" />
+          <NavBtn ativo={view === "servicos"} onClick={() => setView("servicos")} icon={<Wrench size={20} />} label="Serviços" />
+        </nav>
+      )}
 
       {orcAberto && (
         <SheetOrcamento
@@ -704,6 +772,9 @@ function App() {
           orcamentos={orcamentos}
           clientes={clientes}
           onCriarCliente={criarClienteRapido}
+          papel={papel}
+          tecnicos={tecnicos}
+          quemSou={meuNome || meuEmail}
           vendedoras={vendedoras}
           vendedorPadrao={vendAtiva ? vendAtiva.nome : ""}
           onSalvar={salvarOrc}
@@ -721,6 +792,9 @@ function App() {
           ordens={ordens}
           clientes={clientes}
           onCriarCliente={criarClienteRapido}
+          papel={papel}
+          tecnicos={tecnicos}
+          quemSou={meuNome || meuEmail}
           onSalvar={salvarOs}
           onExcluir={excluirOs}
           onShare={setShare}
@@ -754,7 +828,12 @@ function App() {
           onRename={renameVendedora}
           onRemove={removeVendedora}
           onSetAtiva={setVendAtivaId}
-          onExportar={exportarBackup}
+          equipe={equipe}
+          onEquipe={papel === "escritorio" ? {
+            add: ({ nome, email }) => updEquipe([...equipe, { id: uid(), nome: nome.trim(), email: email.trim().toLowerCase(), papel: "tecnico" }]),
+            remove: (id) => updEquipe(equipe.filter((m) => m.id !== id)),
+          } : null}
+          onExportar={papel === "escritorio" ? exportarBackup : null}
           onImportar={importarBackup}
           onSair={() => supabase.auth.signOut()}
           onFechar={() => setPerfilAberto(false)}
@@ -1114,7 +1193,7 @@ function montarTarefas(orcamentos, ordens, dia) {
   return [...visitas, ...servicos].sort((a, b) => (a.hora || "99:99").localeCompare(b.hora || "99:99"));
 }
 
-function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare }) {
+function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, papel = "escritorio" }) {
   const t = todayStr();
   const [dia, setDia] = useState(t);
   const tarefas = useMemo(() => montarTarefas(orcamentos, ordens, dia), [orcamentos, ordens, dia]);
@@ -1151,8 +1230,8 @@ function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare }
 
   return (
     <div className="vg-page vg-agenda">
-      <span className="vg-eyebrow">Agenda</span>
-      <h1 className="vg-h1">O que fazer no dia</h1>
+      <span className="vg-eyebrow">{papel === "tecnico" ? "Área do técnico" : "Agenda"}</span>
+      <h1 className="vg-h1">{papel === "tecnico" ? "Minha agenda" : "O que fazer no dia"}</h1>
 
       <div className="vg-dia-nav">
         <button className="vg-x" onClick={() => setDia(addDaysStr(dia, -1))} aria-label="Dia anterior"><ChevronLeft size={20} /></button>
@@ -1401,8 +1480,9 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
 }
 
 /* ============ sheet de orçamento ============ */
-function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, vendedoras = [], vendedorPadrao = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
+function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
   const novo = inicial.novo;
+  const tecnico = papel === "tecnico";
   const [o, setO] = useState(() =>
     novo
       ? {
@@ -1427,10 +1507,22 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
 
   const total = itemsTotal(o.itens);
 
-  const marcarVisitaFeita = () => onSalvar({ ...o, status: "a_enviar", prazoEnvio: prazo });
+  const marcarVisitaFeita = () => onSalvar({ ...o, status: "a_enviar", prazoEnvio: prazo, visitaFeitaEm: o.visitaFeitaEm || new Date().toISOString() });
   const marcarEnviado = () => onSalvar({ ...o, status: "enviado", dataEnvio: todayStr() });
-  const aprovar = () => onSalvar({ ...o, status: "aprovado" });
+  const autorizar = () => onSalvar({ ...o, status: "aprovado", autorizadoEm: new Date().toISOString(), autorizadoPor: quemSou || "" });
   const recusar = () => onSalvar({ ...o, status: "recusado" });
+  // Técnico terminou a visita: manda o levantamento para o escritório montar o orçamento.
+  const concluirVisita = () => {
+    if (!String(o.levantamento || "").trim() && o.itens.length === 0) {
+      onToast && onToast("Escreva o levantamento ou liste o material antes de enviar.");
+      return;
+    }
+    onSalvar({
+      ...o, status: "a_enviar", prazoEnvio: o.prazoEnvio || addDaysStr(todayStr(), 2),
+      visitaFeitaEm: new Date().toISOString(), levantamentoPor: quemSou || "",
+    });
+    onToast && onToast("Levantamento enviado para o escritório.");
+  };
 
   const compartilhar = () => {
     let txt = `*VIGIAR — Segurança eletrônica*\n*Orçamento Nº ${o.numero}*\n\n`;
@@ -1442,6 +1534,7 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
       txt += `• ${it.qtd}x ${it.descricao || "item"} — ${brl((Number(it.qtd) || 0) * (Number(it.valor) || 0))}\n`;
     });
     txt += `\n*Total: ${brl(total)}*`;
+    if (resumoPagamento(o)) txt += `\n💳 ${resumoPagamento(o)}`;
     if (o.observacoes) txt += `\n\nObs.: ${o.observacoes}`;
     onShare({ titulo: `Orçamento Nº ${o.numero}`, texto: txt });
   };
@@ -1497,6 +1590,28 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
       <Campo label="O que o cliente quer">
         <input className="vg-in" value={o.descricaoServico} onChange={(e) => set("descricaoServico", e.target.value)} placeholder="Ex.: 4 câmeras + alarme + portão" />
       </Campo>
+      {tecnico ? (
+        <>
+          <Campo label="Levantamento da visita — o que precisa ser feito">
+            <textarea className="vg-in vg-ta" rows={4} value={o.levantamento || ""} onChange={(e) => set("levantamento", e.target.value)}
+              placeholder="Ex.: 4 câmeras nos cantos, 1 DVR no escritório, passar 60 m de cabo pelo forro, precisa de escada grande…" />
+          </Campo>
+          <div className="vg-itens-head">
+            <span>Material e serviços que vão precisar</span>
+            <button className="vg-link" onClick={addItem}><Plus size={14} /> Adicionar</button>
+          </div>
+          {o.itens.length === 0 && <div className="vg-itens-vazio">Liste o que vai precisar. O escritório coloca os valores depois.</div>}
+          {o.itens.map((it, i) => (
+            <div key={i} className="vg-mat">
+              <input className="vg-in vg-mat-desc" value={it.descricao} onChange={(e) => setItem(i, "descricao", e.target.value)} placeholder="Descrição" />
+              <input type="number" min="0" step="any" className="vg-in vg-mat-qtd" value={it.qtd} onChange={(e) => setItem(i, "qtd", e.target.value)} aria-label="Quantidade" />
+              <input className="vg-in vg-mat-un" value={it.unidade ?? "UN"} onChange={(e) => setItem(i, "unidade", e.target.value)} aria-label="Unidade" />
+              <button className="vg-del" onClick={() => delItem(i)} aria-label="Remover"><Trash2 size={16} /></button>
+            </div>
+          ))}
+        </>
+      ) : (
+        <>
       <div className="vg-row2">
         <Campo label="Vendedor">
           {vendedoras.length ? (
@@ -1513,6 +1628,23 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
           <input type="number" min="1" className="vg-in" value={o.validadeDias ?? 7} onChange={(e) => set("validadeDias", e.target.value)} />
         </Campo>
       </div>
+      <Campo label="Técnico que faz a visita" icon={<Wrench size={14} />}>
+        <select className="vg-in" value={o.tecnicoEmail || ""}
+          onChange={(e) => {
+            const tc = tecnicos.find((x) => x.email === e.target.value);
+            setO((p) => ({ ...p, tecnicoEmail: e.target.value, tecnicoNome: tc ? tc.nome : "" }));
+          }}>
+          <option value="">Qualquer técnico</option>
+          {tecnicos.map((tc) => <option key={tc.id} value={tc.email}>{tc.nome}</option>)}
+        </select>
+      </Campo>
+
+      {o.levantamento && (
+        <div className="vg-levant">
+          <div className="vg-itens-head"><span><Wrench size={14} /> Levantamento do técnico{o.tecnicoNome ? ` — ${o.tecnicoNome}` : ""}</span></div>
+          <p>{o.levantamento}</p>
+        </div>
+      )}
 
       {/* itens */}
       <div className="vg-itens-head">
@@ -1550,6 +1682,29 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
         <div className="vg-total"><span>Total</span><b>{brl(total)}</b></div>
       )}
 
+      {/* forma de pagamento */}
+      <div className="vg-itens-head"><span>Forma de pagamento</span></div>
+      <div className="vg-row2">
+        <Campo label="Como o cliente vai pagar">
+          <select className="vg-in" value={o.formaPagamento || ""} onChange={(e) => set("formaPagamento", e.target.value)}>
+            <option value="">Selecione…</option>
+            {FORMAS_PAGAMENTO.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </Campo>
+        <Campo label="Parcelas">
+          <input type="number" min="1" max="24" className="vg-in" value={o.parcelas || ""} onChange={(e) => set("parcelas", e.target.value)} placeholder="1" />
+        </Campo>
+      </div>
+      <div className="vg-row2">
+        <Campo label="Entrada (R$)">
+          <input type="number" min="0" step="0.01" className="vg-in" value={o.entrada || ""} onChange={(e) => set("entrada", e.target.value)} placeholder="0,00" />
+        </Campo>
+        <Campo label="Observação do pagamento">
+          <input className="vg-in" value={o.obsPagamento || ""} onChange={(e) => set("obsPagamento", e.target.value)} placeholder="Ex.: 50% na instalação" />
+        </Campo>
+      </div>
+      {resumoPagamento(o) && <div className="vg-pag-resumo"><Check size={14} /> {resumoPagamento(o)}</div>}
+
       <Campo label="Observações">
         <textarea className="vg-in vg-ta" rows={2} value={o.observacoes} onChange={(e) => set("observacoes", e.target.value)} placeholder="Condições, prazo de execução, garantia…" />
       </Campo>
@@ -1570,9 +1725,17 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
             <button className="vg-btn vg-btn-violet" onClick={marcarEnviado}><Send size={16} /> Marcar como enviado</button>
           )}
           {o.status === "enviado" && (
-            <div className="vg-acao-row">
-              <button className="vg-btn vg-btn-green" onClick={aprovar}><ThumbsUp size={16} /> Aprovado</button>
-              <button className="vg-btn vg-btn-ghost" onClick={recusar}><ThumbsDown size={16} /> Recusado</button>
+            <div className="vg-acao-box">
+              <label className="vg-acao-label">O cliente autorizou o serviço?</label>
+              <div className="vg-acao-row">
+                <button className="vg-btn vg-btn-green" onClick={autorizar}><ThumbsUp size={16} /> AUTORIZAR</button>
+                <button className="vg-btn vg-btn-ghost" onClick={recusar}><ThumbsDown size={16} /> Recusado</button>
+              </div>
+            </div>
+          )}
+          {o.autorizadoEm && (
+            <div className="vg-autorizado">
+              <Check size={16} /> Autorizado em {fmtDataHora(o.autorizadoEm)}{o.autorizadoPor ? ` por ${o.autorizadoPor}` : ""}
             </div>
           )}
           {o.status === "aprovado" && (
@@ -1587,24 +1750,39 @@ function SheetOrcamento({ inicial, orcamentos, clientes = [], onCriarCliente, ve
         </div>
       )}
 
+        </>
+      )}
+
       {/* rodapé */}
-      <div className="vg-sheet-foot">
-        <button className="vg-btn vg-btn-primary" onClick={tentarSalvar}><Check size={16} /> Salvar</button>
-        <button className="vg-btn vg-btn-ghost" onClick={abrirPreview}><Download size={16} /> Ver PDF</button>
-      </div>
-      {!novo && (
-        <div className="vg-sheet-foot vg-foot2">
-          <button className="vg-btn vg-btn-green" onClick={abrirPreview}><Send size={16} /> Enviar PDF no WhatsApp</button>
-          <button className="vg-iconbtn" onClick={() => onExcluir(o.id)} aria-label="Excluir"><Trash2 size={18} /></button>
+      {tecnico ? (
+        <div className="vg-sheet-foot">
+          <button className="vg-btn vg-btn-ghost" onClick={tentarSalvar}><Check size={16} /> Salvar rascunho</button>
+          {o.status === "agendado" && (
+            <button className="vg-btn vg-btn-green" onClick={concluirVisita}><Send size={16} /> Enviar para o escritório</button>
+          )}
         </div>
+      ) : (
+        <>
+          <div className="vg-sheet-foot">
+            <button className="vg-btn vg-btn-primary" onClick={tentarSalvar}><Check size={16} /> Salvar</button>
+            <button className="vg-btn vg-btn-ghost" onClick={abrirPreview}><Download size={16} /> Ver PDF</button>
+          </div>
+          {!novo && (
+            <div className="vg-sheet-foot vg-foot2">
+              <button className="vg-btn vg-btn-green" onClick={abrirPreview}><Send size={16} /> Enviar PDF no WhatsApp</button>
+              <button className="vg-iconbtn" onClick={() => onExcluir(o.id)} aria-label="Excluir"><Trash2 size={18} /></button>
+            </div>
+          )}
+        </>
       )}
     </Sheet>
   );
 }
 
 /* ============ sheet de OS ============ */
-function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, onSalvar, onExcluir, onShare, onToast, onFechar }) {
+function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onShare, onToast, onFechar }) {
   const novo = inicial.novo;
+  const tecnico = papel === "tecnico";
   const [erroCli, setErroCli] = useState("");
   const [o, setO] = useState(() =>
     novo
@@ -1627,6 +1805,25 @@ function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, onSalvar, onE
     setO((p) => ({ ...p, materiais: [...p.materiais, { id: uid(), descricao: "", qtd: 1, unidade: "UN", separado: false }] }));
   const delMat = (i) => setO((p) => ({ ...p, materiais: p.materiais.filter((_, idx) => idx !== i) }));
   const nSeparados = o.materiais.filter((m) => m.separado).length;
+  // "Peguei na loja": já sugere a quantidade prevista como quantidade retirada.
+  const pegarNaLoja = (i, marcado) =>
+    setO((p) => ({
+      ...p,
+      materiais: p.materiais.map((m, idx) =>
+        idx === i ? { ...m, pegoNaLoja: marcado, qtdPega: marcado ? (m.qtdPega ?? m.qtd ?? "") : "" } : m),
+    }));
+  const nPegos = o.materiais.filter((m) => m.pegoNaLoja).length;
+  const devolver = o.materiais.filter((m) => m.pegoNaLoja && (Number(m.qtdUsada) || 0) < (Number(m.qtdPega) || Number(m.qtd) || 0));
+
+  // Técnico concluiu o serviço: relatório volta para o escritório com a baixa do material.
+  const concluirServico = () => {
+    if (!String(o.relatorio || "").trim()) {
+      onToast && onToast("Escreva o que foi feito antes de concluir.");
+      return;
+    }
+    onSalvar({ ...o, status: "concluida", concluidaEm: new Date().toISOString(), concluidaPor: quemSou || "" });
+    onToast && onToast("Serviço concluído e enviado para o escritório.");
+  };
   const tentarSalvar = () => {
     if (!o.clienteId) {
       setErroCli("Escolha um cliente cadastrado — ou cadastre na hora, no botão abaixo.");
@@ -1647,8 +1844,12 @@ function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, onSalvar, onE
     const mats = o.materiais.filter((m) => String(m.descricao || "").trim());
     if (mats.length) {
       txt += `\n*Materiais:*\n`;
-      mats.forEach((m) => { txt += `${m.separado ? "✅" : "⬜"} ${m.qtd || 1} ${m.unidade || "UN"} — ${m.descricao}\n`; });
+      mats.forEach((m) => {
+        const extra = m.pegoNaLoja ? ` (peguei ${m.qtdPega ?? m.qtd}${m.qtdUsada ? `, usei ${m.qtdUsada}` : ""})` : "";
+        txt += `${m.separado ? "✅" : "⬜"} ${m.qtd || 1} ${m.unidade || "UN"} — ${m.descricao}${extra}\n`;
+      });
     }
+    if (o.relatorio) txt += `\n*O que foi feito:*\n${o.relatorio}\n`;
     if (o.observacoes) txt += `\nObs.: ${o.observacoes}`;
     onShare({ titulo: `OS Nº ${o.numero}`, texto: txt.trim() });
   };
@@ -1668,11 +1869,29 @@ function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, onSalvar, onE
         <Campo label="Horário do serviço" icon={<Clock size={14} />}>
           <input type="time" className="vg-in" value={o.horaServico || ""} onChange={(e) => set("horaServico", e.target.value)} />
         </Campo>
-        <Campo label="Valor do serviço (R$)">
-          <input type="number" min="0" step="0.01" inputMode="decimal" className="vg-in" value={o.valor ?? ""}
-            onChange={(e) => set("valor", e.target.value)} placeholder="0,00" />
-        </Campo>
+        {tecnico ? (
+          <Campo label="Técnico">
+            <input className="vg-in" value={o.tecnicoNome || quemSou} disabled />
+          </Campo>
+        ) : (
+          <Campo label="Valor do serviço (R$)">
+            <input type="number" min="0" step="0.01" inputMode="decimal" className="vg-in" value={o.valor ?? ""}
+              onChange={(e) => set("valor", e.target.value)} placeholder="0,00" />
+          </Campo>
+        )}
       </div>
+      {!tecnico && (
+        <Campo label="Técnico que executa" icon={<Wrench size={14} />}>
+          <select className="vg-in" value={o.tecnicoEmail || ""}
+            onChange={(e) => {
+              const tc = tecnicos.find((x) => x.email === e.target.value);
+              setO((p) => ({ ...p, tecnicoEmail: e.target.value, tecnicoNome: tc ? tc.nome : "" }));
+            }}>
+            <option value="">Qualquer técnico</option>
+            {tecnicos.map((tc) => <option key={tc.id} value={tc.email}>{tc.nome}</option>)}
+          </select>
+        </Campo>
+      )}
       <Campo label="Endereço — rua e nº" icon={<MapPin size={14} />}>
         <input className="vg-in" value={o.endereco} onChange={(e) => set("endereco", e.target.value)} placeholder="Ex.: Rua das Flores, 100" />
       </Campo>
@@ -1693,27 +1912,63 @@ function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, onSalvar, onE
         <div className="vg-itens-vazio">Liste o material que será usado neste serviço (cabos, conectores, fontes…). Marque ✓ quando estiver separado.</div>
       )}
       {o.materiais.map((m, i) => (
-        <div key={m.id || i} className={"vg-mat" + (m.separado ? " ok" : "")}>
-          <button className="vg-mat-check" onClick={() => setMat(i, "separado", !m.separado)}
-            aria-label={m.separado ? "Desmarcar separado" : "Marcar como separado"}>
-            {m.separado && <Check size={16} />}
-          </button>
-          <input className="vg-in vg-mat-desc" value={m.descricao} onChange={(e) => setMat(i, "descricao", e.target.value)} placeholder="Material" />
-          <input type="number" min="0" step="any" className="vg-in vg-mat-qtd" value={m.qtd} onChange={(e) => setMat(i, "qtd", e.target.value)} aria-label="Quantidade" />
-          <input className="vg-in vg-mat-un" value={m.unidade ?? "UN"} onChange={(e) => setMat(i, "unidade", e.target.value)} placeholder="UN" aria-label="Unidade" />
-          <button className="vg-del" onClick={() => delMat(i)} aria-label="Remover material"><Trash2 size={16} /></button>
+        <div key={m.id || i} className={"vg-mat-box" + (m.separado ? " ok" : "")}>
+          <div className="vg-mat">
+            <button className="vg-mat-check" onClick={() => setMat(i, "separado", !m.separado)}
+              aria-label={m.separado ? "Desmarcar separado" : "Marcar como separado"}>
+              {m.separado && <Check size={16} />}
+            </button>
+            <input className="vg-in vg-mat-desc" value={m.descricao} onChange={(e) => setMat(i, "descricao", e.target.value)} placeholder="Material" />
+            <input type="number" min="0" step="any" className="vg-in vg-mat-qtd" value={m.qtd} onChange={(e) => setMat(i, "qtd", e.target.value)} aria-label="Quantidade prevista" />
+            <input className="vg-in vg-mat-un" value={m.unidade ?? "UN"} onChange={(e) => setMat(i, "unidade", e.target.value)} placeholder="UN" aria-label="Unidade" />
+            <button className="vg-del" onClick={() => delMat(i)} aria-label="Remover material"><Trash2 size={16} /></button>
+          </div>
+          <div className="vg-mat-loja">
+            <label className={"vg-mat-peguei" + (m.pegoNaLoja ? " on" : "")}>
+              <input type="checkbox" checked={!!m.pegoNaLoja} onChange={(e) => pegarNaLoja(i, e.target.checked)} />
+              <Package size={13} /> Peguei na loja
+            </label>
+            {m.pegoNaLoja && (
+              <>
+                <span className="vg-mat-min">Peguei
+                  <input type="number" min="0" step="any" className="vg-in" value={m.qtdPega ?? m.qtd ?? ""} onChange={(e) => setMat(i, "qtdPega", e.target.value)} />
+                </span>
+                <span className="vg-mat-min">Usei
+                  <input type="number" min="0" step="any" className="vg-in" value={m.qtdUsada ?? ""} onChange={(e) => setMat(i, "qtdUsada", e.target.value)} placeholder="0" />
+                </span>
+                {(Number(m.qtdPega) || 0) - (Number(m.qtdUsada) || 0) > 0 && (
+                  <span className="vg-mat-devolver">Devolver {(Number(m.qtdPega) || 0) - (Number(m.qtdUsada) || 0)} {m.unidade || "UN"}</span>
+                )}
+              </>
+            )}
+          </div>
         </div>
       ))}
+      {nPegos > 0 && (
+        <div className="vg-mat-resumo">
+          <Package size={14} /> {nPegos} material(is) pego(s) na loja
+          {devolver.length > 0 ? ` · ${devolver.length} para devolver depois do serviço` : " · nada a devolver"}
+        </div>
+      )}
+
+      <Campo label={tecnico ? "O que eu fiz no serviço *" : "Relatório do técnico"} icon={<ListChecks size={14} />}>
+        <textarea className="vg-in vg-ta" rows={3} value={o.relatorio || ""} onChange={(e) => set("relatorio", e.target.value)}
+          placeholder="Ex.: instalei 4 câmeras, configurei o DVR e o app no celular do cliente. Faltou 1 conector, levo amanhã." />
+      </Campo>
+      {o.concluidaEm && (
+        <div className="vg-autorizado"><Check size={16} /> Concluído em {fmtDataHora(o.concluidaEm)}{o.concluidaPor ? ` por ${o.concluidaPor}` : ""}</div>
+      )}
+
       <Campo label="Observações">
         <textarea className="vg-in vg-ta" rows={2} value={o.observacoes} onChange={(e) => set("observacoes", e.target.value)} placeholder="Material, acesso ao local, contato no dia…" />
       </Campo>
 
       {!novo && o.status === "agendada" && (
-        <button className="vg-btn vg-btn-green vg-full" onClick={() => onSalvar({ ...o, status: "concluida" })}>
-          <CircleCheck size={16} /> Marcar como concluída
+        <button className="vg-btn vg-btn-green vg-full" onClick={tecnico ? concluirServico : () => onSalvar({ ...o, status: "concluida", concluidaEm: new Date().toISOString(), concluidaPor: quemSou || "" })}>
+          <CircleCheck size={16} /> {tecnico ? "Concluí o serviço — enviar para o escritório" : "Marcar como concluída"}
         </button>
       )}
-      {!novo && o.status === "concluida" && (
+      {!novo && o.status === "concluida" && !tecnico && (
         <button className="vg-btn vg-btn-ghost vg-full" onClick={() => onSalvar({ ...o, status: "agendada" })}>
           Reabrir serviço
         </button>
@@ -1721,7 +1976,7 @@ function SheetOS({ inicial, ordens, clientes = [], onCriarCliente, onSalvar, onE
 
       <div className="vg-sheet-foot">
         <button className="vg-btn vg-btn-primary" onClick={tentarSalvar}><Check size={16} /> Salvar</button>
-        {!novo && (
+        {!novo && !tecnico && (
           <>
             <button className="vg-btn vg-btn-ghost" onClick={compartilhar}><Share2 size={16} /> Enviar</button>
             <button className="vg-iconbtn" onClick={() => onExcluir(o.id)} aria-label="Excluir"><Trash2 size={18} /></button>
@@ -1842,10 +2097,11 @@ function PreviewOrcamento({ orc, onFechar }) {
 }
 
 /* ============ gerenciamento de vendedoras (perfis) ============ */
-function SheetVendedoras({ vendedoras, ativaId, onAdd, onRename, onRemove, onSetAtiva, onExportar, onImportar, onSair, onFechar }) {
+function SheetVendedoras({ vendedoras, ativaId, onAdd, onRename, onRemove, onSetAtiva, equipe = [], onEquipe, onExportar, onImportar, onSair, onFechar }) {
   const [novo, setNovo] = useState("");
   const [editId, setEditId] = useState(null);
   const [editNome, setEditNome] = useState("");
+  const [novoTec, setNovoTec] = useState({ nome: "", email: "" });
 
   const adicionar = () => { const n = novo.trim(); if (!n) return; onAdd(n); setNovo(""); };
   const salvarEdicao = () => { if (editNome.trim()) onRename(editId, editNome.trim()); setEditId(null); setEditNome(""); };
@@ -1885,6 +2141,43 @@ function SheetVendedoras({ vendedoras, ativaId, onAdd, onRename, onRemove, onSet
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {onEquipe && (
+        <div className="vg-backup">
+          <div className="vg-itens-head">
+            <span><Wrench size={15} style={{ verticalAlign: "-2px", marginRight: 6 }} />Equipe — quem entra como técnico</span>
+          </div>
+          <p className="vg-prev-dica">
+            O técnico entra com o <b>e-mail e senha criados por você no Supabase</b> e vê só a agenda dele.
+            Cadastre aqui o mesmo e-mail que você criou lá.
+          </p>
+          <div className="vg-vend-add">
+            <input className="vg-in" value={novoTec.nome} onChange={(e) => setNovoTec({ ...novoTec, nome: e.target.value })} placeholder="Nome do técnico" />
+          </div>
+          <div className="vg-vend-add">
+            <input className="vg-in" value={novoTec.email} onChange={(e) => setNovoTec({ ...novoTec, email: e.target.value })} placeholder="email@do-tecnico.com" inputMode="email" />
+            <button className="vg-btn vg-btn-primary vg-vend-addbtn"
+              onClick={() => { if (novoTec.nome.trim() && novoTec.email.trim()) { onEquipe.add(novoTec); setNovoTec({ nome: "", email: "" }); } }}>
+              <Plus size={16} /> Add
+            </button>
+          </div>
+          {equipe.length === 0 ? (
+            <Vazio texto="Nenhum técnico cadastrado. Sem técnico, a agenda fica só com você." />
+          ) : (
+            <div className="vg-vend-list">
+              {equipe.map((m) => (
+                <div key={m.id} className="vg-vend-row">
+                  <span className="vg-vend-nome">
+                    <span className="vg-vend-av">{String(m.nome || "?").charAt(0).toUpperCase()}</span>
+                    <span className="vg-vend-txt">{m.nome}<em className="vg-equipe-mail">{m.email}</em></span>
+                  </span>
+                  <button className="vg-iconbtn" onClick={() => onEquipe.remove(m.id)} aria-label="Remover da equipe"><Trash2 size={16} /></button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2126,6 +2419,23 @@ function Estilos() {
 .vg-alerta-txt strong{font-size:14px}
 .vg-alerta-txt span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vg-chev{transform:rotate(180deg);color:#c2ccda;flex-shrink:0}
+.vg-papel{background:rgba(255,255,255,.16);color:#fff;font-size:11px;font-weight:800;letter-spacing:.5px;padding:5px 10px;border-radius:999px}
+.vg-levant{background:#f4f7fb;border:1px solid var(--line);border-radius:13px;padding:4px 12px 12px;margin-bottom:14px}
+.vg-levant p{margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap}
+.vg-pag-resumo{display:flex;align-items:center;gap:7px;background:#d8f0e1;color:#147a42;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:700;margin-bottom:12px}
+.vg-autorizado{display:flex;align-items:center;gap:7px;background:#d8f0e1;color:#147a42;border-radius:11px;padding:11px 13px;font-size:13px;font-weight:700;margin-top:10px}
+.vg-mat-box{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:7px;margin-bottom:8px}
+.vg-mat-box.ok{background:#f0faf4;border-color:#bfe5cd}
+.vg-mat-box .vg-mat{background:none;border:none;padding:0;margin:0}
+.vg-mat-loja{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 4px 2px;border-top:1px dashed var(--line);margin-top:7px}
+.vg-mat-peguei{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+.vg-mat-peguei.on{color:var(--brand)}
+.vg-mat-peguei input{width:17px;height:17px;accent-color:#0e63d6}
+.vg-mat-min{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);font-weight:600}
+.vg-mat-min .vg-in{width:62px;padding:6px 8px;font-size:13px}
+.vg-mat-devolver{font-size:12px;font-weight:700;color:var(--warn);background:var(--warn-bg);border-radius:999px;padding:3px 9px}
+.vg-mat-resumo{display:flex;align-items:center;gap:7px;background:#e4eefb;color:#0e63d6;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:700;margin:2px 0 14px}
+.vg-equipe-mail{display:block;font-style:normal;font-size:12px;color:var(--muted);font-weight:600}
 .vg-cli-nome{display:inline-flex;align-items:center;gap:9px;font-size:16px;font-weight:700}
 .vg-card-tel{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--muted);font-weight:600}
 .vg-cliente-sel{display:flex;align-items:center;gap:10px;background:#e4eefb;border:1px solid #cfe0f7;border-radius:13px;padding:10px;margin-bottom:12px}
