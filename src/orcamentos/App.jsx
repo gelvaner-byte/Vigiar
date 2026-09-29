@@ -439,7 +439,9 @@ function App() {
   // Qualquer falha ao salvar vira um aviso fixo com botão "Tentar de novo".
   const falhaAoSalvar = (e) => {
     console.error(e);
-    setAviso("ATENÇÃO: a última alteração NÃO foi salva no banco. Verifique a internet e toque em Tentar de novo.");
+    // Mostra o motivo real: sem isso fica impossível saber se é internet, permissão ou sessão.
+    const motivo = [e && e.message, e && e.code && `código ${e.code}`, e && e.hint].filter(Boolean).join(" · ");
+    setAviso(`ATENÇÃO: a última alteração NÃO foi salva no banco. ${motivo ? `Motivo: ${motivo}. ` : ""}Verifique a internet e toque em Tentar de novo.`);
   };
   const tentarDeNovo = async () => {
     try {
