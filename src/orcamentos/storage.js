@@ -53,10 +53,15 @@ export async function carregarTudo() {
     .select('colecao, id, dados')
     .eq('excluido', false)
   if (error) await conferir(error)
+  // Se o mesmo registro vier em duplicidade (cópias antigas de antes da chave única),
+  // fica só uma — senão o app tentaria gravar o mesmo id duas vezes no mesmo comando.
   const out = { orcamentos: [], ordens: [], clientes: [], config: {} }
+  const vistos = { orcamentos: new Set(), ordens: new Set(), clientes: new Set() }
   for (const r of data || []) {
-    if (r.colecao === 'config') out.config[r.id] = r.dados
-    else if (out[r.colecao]) out[r.colecao].push(r.dados)
+    if (r.colecao === 'config') { out.config[r.id] = r.dados; continue }
+    if (!out[r.colecao] || vistos[r.colecao].has(r.id)) continue
+    vistos[r.colecao].add(r.id)
+    out[r.colecao].push(r.dados)
   }
   return out
 }
@@ -65,7 +70,9 @@ export async function salvarRegistros(colecao, itens) {
   if (!itens.length) return
   const uid = await userId()
   const agora = new Date().toISOString()
-  const rows = itens.map((it) => ({
+  // Um id só pode aparecer uma vez no mesmo comando.
+  const unicos = [...new Map(itens.map((it) => [String(it.id), it])).values()]
+  const rows = unicos.map((it) => ({
     user_id: uid,
     colecao,
     id: String(it.id),
