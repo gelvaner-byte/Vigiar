@@ -6,8 +6,29 @@ const CACHE = 'vigiar:orc:cache:v1'
 async function userId() {
   const { data } = await supabase.auth.getSession()
   const id = data.session?.user?.id
-  if (!id) throw new Error('Sessão expirada. Entre de novo.')
+  if (!id) {
+    await pedirLoginDeNovo()
+    throw new Error('Sessão expirada. Entre de novo.')
+  }
   return id
+}
+
+// Token vencido ou inválido: em vez de "não salvou", o app volta para a tela de login.
+function ehErroDeSessao(erro) {
+  const txt = `${erro?.message || ''} ${erro?.code || ''}`.toLowerCase()
+  return erro?.status === 401 || erro?.status === 403 ||
+    txt.includes('jwt') || txt.includes('token') || txt.includes('not authenticated')
+}
+async function pedirLoginDeNovo() {
+  try { await supabase.auth.signOut() } catch { /* já estava fora */ }
+}
+async function conferir(erro) {
+  if (!erro) return
+  if (ehErroDeSessao(erro)) {
+    await pedirLoginDeNovo()
+    throw new Error('Sua sessão expirou. Entre de novo para continuar salvando.')
+  }
+  throw erro
 }
 
 // Cópia local de segurança: guarda o último estado conhecido no próprio aparelho.
@@ -31,7 +52,7 @@ export async function carregarTudo() {
     .from(TABELA)
     .select('colecao, id, dados')
     .eq('excluido', false)
-  if (error) throw error
+  if (error) await conferir(error)
   const out = { orcamentos: [], ordens: [], clientes: [], config: {} }
   for (const r of data || []) {
     if (r.colecao === 'config') out.config[r.id] = r.dados
@@ -53,7 +74,7 @@ export async function salvarRegistros(colecao, itens) {
     atualizado_em: agora,
   }))
   const { error } = await supabase.from(TABELA).upsert(rows, { onConflict: 'user_id,colecao,id' })
-  if (error) throw error
+  if (error) await conferir(error)
 }
 
 export async function excluirRegistros(colecao, ids) {
@@ -63,7 +84,7 @@ export async function excluirRegistros(colecao, ids) {
     .update({ excluido: true, atualizado_em: new Date().toISOString() })
     .eq('colecao', colecao)
     .in('id', ids.map(String))
-  if (error) throw error
+  if (error) await conferir(error)
 }
 
 export async function salvarConfig(chave, dados) {
@@ -74,7 +95,7 @@ export async function salvarConfig(chave, dados) {
       { user_id: uid, colecao: 'config', id: chave, dados, excluido: false, atualizado_em: new Date().toISOString() },
       { onConflict: 'user_id,colecao,id' },
     )
-  if (error) throw error
+  if (error) await conferir(error)
 }
 
 // Salva só o que mudou entre a lista anterior e a nova.
