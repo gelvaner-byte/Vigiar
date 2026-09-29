@@ -80,7 +80,8 @@ export async function salvarRegistros(colecao, itens) {
     excluido: false,
     atualizado_em: agora,
   }))
-  const { error } = await supabase.from(TABELA).upsert(rows, { onConflict: 'user_id,colecao,id' })
+  // A chave é o registro (colecao + id): qualquer pessoa da equipe altera a mesma linha.
+  const { error } = await supabase.from(TABELA).upsert(rows, { onConflict: 'colecao,id' })
   if (error) await conferir(error)
 }
 
@@ -100,7 +101,7 @@ export async function salvarConfig(chave, dados) {
     .from(TABELA)
     .upsert(
       { user_id: uid, colecao: 'config', id: chave, dados, excluido: false, atualizado_em: new Date().toISOString() },
-      { onConflict: 'user_id,colecao,id' },
+      { onConflict: 'colecao,id' },
     )
   if (error) await conferir(error)
 }
