@@ -410,9 +410,10 @@ function Estilo() {
 /* painéis */
 .cmd-grade{display:grid;grid-template-columns:1fr;gap:12px}
 @media (min-width:760px){.cmd-grade{grid-template-columns:repeat(2,1fr)}}
-@media (min-width:760px){.cmd-tron{grid-column:span 2}}
+@media (min-width:760px){.cmd-tron,.cmd-cerebro{grid-column:span 2}}
 @media (min-width:1120px){.cmd-grade{grid-template-columns:repeat(3,1fr)}
   .cmd-tron{grid-column:span 2;grid-row:span 2}
+  .cmd-cerebro{grid-column:span 3}
   .cmd-ia{grid-column:span 2}}
 .cmd-painel{background:rgba(10,18,32,.72);border:1px solid rgba(120,180,255,.16);backdrop-filter:blur(3px);
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
