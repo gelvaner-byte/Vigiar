@@ -2,7 +2,8 @@
 // Roda no servidor da Vercel: a chave da Anthropic nunca chega ao navegador.
 // Só responde a quem está logado no app E consta na lista de donos.
 
-const MODELO = 'claude-sonnet-5'
+// Sonnet 5.5: mesma inteligência da versão anterior, respostas bem mais rápidas, mesmo preço.
+const MODELO = process.env.TRON_MODELO || 'claude-sonnet-5-5'
 // Preencha com o id do workspace (wrkspc_...) OU defina ANTHROPIC_WORKSPACE_ID na Vercel.
 const WORKSPACE = process.env.ANTHROPIC_WORKSPACE_ID || ''
 const MAX_TOKENS = 1600
@@ -141,6 +142,10 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: MODELO,
         max_tokens: MAX_TOKENS,
+        // Sem "pensar antes de responder" e com esforço baixo: é conversa do dia a dia
+        // em cima de dados prontos, não precisa de raciocínio longo — e assim responde rápido.
+        thinking: { type: 'between_tools' },
+        output_config: { effort: 'low' },
         system: [
           { type: 'text', text: PERFIL },
           { type: 'text', text: retrato },

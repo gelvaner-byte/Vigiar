@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Send, Check, X, Loader, Copy, AlertTriangle } from "lucide-react";
+import { Bot, Send, Check, X, Loader, Copy, AlertTriangle, Volume2, VolumeX } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 
 /* ============ TRON — assistente do Centro de Comando ============ */
@@ -35,6 +35,37 @@ function montarContexto({ clientes, orcamentos, ordens, vendedoras, hoje }) {
         .map((m) => `${(Number(m.qtdPega) || 0) - (Number(m.qtdUsada) || 0)} ${m.unidade || "UN"} de ${m.descricao}`),
     })),
   };
+}
+
+/* ===== voz: o próprio celular/computador fala, sem custo nenhum ===== */
+const TEM_VOZ = typeof window !== "undefined" && "speechSynthesis" in window;
+const KEY_VOZ = "vigiar:tron:voz";
+
+function vozBrasileira() {
+  const vozes = window.speechSynthesis.getVoices() || [];
+  return vozes.find((v) => /pt[-_]BR/i.test(v.lang))
+    || vozes.find((v) => /^pt/i.test(v.lang))
+    || null;
+}
+// Tira marcações e links para a leitura não ficar esquisita.
+function paraFalar(texto) {
+  return String(texto)
+    .replace(/https?:\/\/\S+/g, "link")
+    .replace(/[*_`#>•]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+function falar(texto) {
+  if (!TEM_VOZ) return;
+  const limpo = paraFalar(texto);
+  if (!limpo) return;
+  window.speechSynthesis.cancel();
+  const fala = new SpeechSynthesisUtterance(limpo);
+  const voz = vozBrasileira();
+  if (voz) fala.voice = voz;
+  fala.lang = (voz && voz.lang) || "pt-BR";
+  fala.rate = 1.05;
+  window.speechSynthesis.speak(fala);
 }
 
 const ROTULO_ACAO = {
@@ -86,7 +117,17 @@ export default function Tron({ clientes, orcamentos, ordens, vendedoras, acoes, 
   const [pensando, setPensando] = useState(false);
   const [erro, setErro] = useState("");
   const [estados, setEstados] = useState({}); // id do tool_use -> feito | recusado
+  const [voz, setVoz] = useState(() => {
+    try { return localStorage.getItem(KEY_VOZ) !== "0"; } catch { return true; }
+  });
   const fim = useRef(null);
+
+  const alternarVoz = () => {
+    const novo = !voz;
+    setVoz(novo);
+    try { localStorage.setItem(KEY_VOZ, novo ? "1" : "0"); } catch { /* ignora */ }
+    if (!novo && TEM_VOZ) window.speechSynthesis.cancel();
+  };
 
   const contexto = useMemo(
     () => montarContexto({ clientes, orcamentos, ordens, vendedoras, hoje }),
@@ -110,6 +151,11 @@ export default function Tron({ clientes, orcamentos, ordens, vendedoras, acoes, 
       if (!r.ok) { setErro(resposta.erro || "Falha ao falar com o TRON."); return null; }
       const nova = [...mensagens, { role: "assistant", content: resposta.content }];
       setConversa(nova);
+      // Fala a resposta assim que ela chega (se a voz estiver ligada).
+      if (voz) {
+        const texto = (resposta.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+        if (texto.trim()) falar(texto);
+      }
       return nova;
     } catch (e) {
       setErro("Sem conexão com o TRON: " + String(e.message || e));
@@ -216,6 +262,12 @@ export default function Tron({ clientes, orcamentos, ordens, vendedoras, acoes, 
       </div>
 
       <form className="tron-barra" onSubmit={enviar}>
+        {TEM_VOZ && (
+          <button type="button" className={"tron-voz" + (voz ? " on" : "")} onClick={alternarVoz}
+            title={voz ? "Desligar a voz" : "Ligar a voz"} aria-label={voz ? "Desligar a voz" : "Ligar a voz"}>
+            {voz ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+        )}
         <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Fale com o TRON…" disabled={pensando} />
         <button type="submit" disabled={pensando || !texto.trim()} aria-label="Enviar"><Send size={16} /></button>
       </form>
@@ -260,6 +312,8 @@ export default function Tron({ clientes, orcamentos, ordens, vendedoras, acoes, 
 .tron-barra input:focus{border-color:#ff8c32}
 .tron-barra button{width:46px;border:none;border-radius:10px;background:#e2640a;color:#fff;cursor:pointer;display:grid;place-items:center}
 .tron-barra button:disabled{opacity:.45}
+.tron-voz{background:rgba(120,180,255,.1)!important;border:1px solid rgba(120,180,255,.22)!important;color:#6f87a8!important}
+.tron-voz.on{color:#22d39a!important;border-color:rgba(34,211,154,.45)!important}
       `}</style>
     </div>
   );
