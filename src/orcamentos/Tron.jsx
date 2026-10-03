@@ -10,10 +10,12 @@ const valorOS = (os) =>
 const brl = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 // Retrato enxuto do sistema: só o que o TRON precisa para responder e agir.
-function montarContexto({ clientes, orcamentos, ordens, vendedoras, hoje }) {
+function montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje }) {
   return {
     hoje,
     expediente: "segunda a sexta, 08:00 às 18:00",
+    // O que a empresa sabe — preços, garantia, fornecedores, procedimentos.
+    cerebro: (cerebro || []).map((m) => ({ titulo: m.titulo, categoria: m.categoria, conteudo: m.conteudo })),
     vendedoras: vendedoras.map((v) => v.nome),
     clientes: clientes.map((c) => ({
       id: c.id, nome: c.nome, telefone: c.telefone, endereco: [c.endereco, c.bairro].filter(Boolean).join(" - "),
@@ -94,6 +96,7 @@ const ROTULO_ACAO = {
   criar_orcamento: "Agendar visita de orçamento",
   agendar_servico: "Agendar serviço (criar OS)",
   mudar_status_orcamento: "Mudar situação do orçamento",
+  salvar_memoria: "Guardar no Cérebro",
 };
 
 function Acao({ bloco, clientes, onConfirmar, onRecusar, estado }) {
@@ -131,7 +134,7 @@ function Acao({ bloco, clientes, onConfirmar, onRecusar, estado }) {
   );
 }
 
-export default function Tron({ clientes, orcamentos, ordens, vendedoras, acoes, onToast }) {
+export default function Tron({ clientes, orcamentos, ordens, cerebro = [], vendedoras, acoes, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [conversa, setConversa] = useState([]); // formato da API: {role, content}
   const [texto, setTexto] = useState("");
@@ -151,8 +154,8 @@ export default function Tron({ clientes, orcamentos, ordens, vendedoras, acoes, 
   };
 
   const contexto = useMemo(
-    () => montarContexto({ clientes, orcamentos, ordens, vendedoras, hoje }),
-    [clientes, orcamentos, ordens, vendedoras, hoje],
+    () => montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje }),
+    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje],
   );
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [conversa, pensando]);

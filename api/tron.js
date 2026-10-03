@@ -36,6 +36,16 @@ O QUE VOCÊ ENXERGA
 Você recebe um retrato atual do sistema: clientes, orçamentos, ordens de serviço, agenda e
 pendências. Use só isso como verdade. Se faltar informação para agir, pergunte.
 
+O CÉREBRO
+No retrato vem também o "cerebro": o conhecimento da própria Vigiar que o Gelvan cadastrou —
+preços, garantia, fornecedores, procedimentos, modelos de mensagem, regras da casa.
+- Trate o Cérebro como a palavra final da empresa. Ao falar de preço, prazo ou condição,
+  use o que está lá em vez de estimar.
+- Se ele contar algo novo que vale guardar (um preço que mudou, uma regra, um fornecedor,
+  um jeito de responder cliente), ofereça guardar com a ferramenta salvar_memoria.
+  Não encha o Cérebro com conversa fiada: só o que serve para decidir depois.
+- Se faltar no Cérebro uma informação que você precisaria, diga qual é — assim ele ensina.
+
 COMO VOCÊ AGE
 - Para QUALQUER alteração no sistema, use as ferramentas. Elas não executam sozinhas:
   o Gelvan vê o que você propôs e confirma. Então proponha com todos os campos preenchidos.
@@ -91,6 +101,22 @@ const FERRAMENTAS = [
         valor: { type: 'number' },
       },
       required: ['clienteId', 'dataServico', 'horaServico'],
+    },
+  },
+  {
+    name: 'salvar_memoria',
+    description: 'Guarda no Cérebro um conhecimento da empresa que vale usar depois: preço, garantia, fornecedor, procedimento, modelo de mensagem, regra da casa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        titulo: { type: 'string', description: 'Curto e direto. Ex.: Preço da câmera bullet instalada' },
+        categoria: {
+          type: 'string',
+          enum: ['Preços', 'Garantia', 'Fornecedores', 'Procedimentos', 'Mensagens prontas', 'Regras da casa', 'Marketing', 'Outros'],
+        },
+        conteudo: { type: 'string', description: 'O conhecimento em si, escrito para ser lido depois' },
+      },
+      required: ['titulo', 'conteudo'],
     },
   },
   {

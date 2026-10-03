@@ -381,6 +381,7 @@ function App() {
   const [orcamentos, setOrcamentos] = useState([]);
   const [ordens, setOrdens] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [cerebro, setCerebro] = useState([]); // memórias da empresa (área restrita)
   const [cliAberto, setCliAberto] = useState(null); // ficha do cliente: objeto ou {novo:true}
   const [view, setView] = useState("hoje");
   const [orcAberto, setOrcAberto] = useState(null); // objeto ou {novo:true}
@@ -405,9 +406,10 @@ function App() {
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
       setClientes(d.clientes);
+      setCerebro(d.cerebro || []);
       setVendedoras(vend);
       setEquipe(eq);
-      gravarCache({ orcamentos: d.orcamentos, ordens: d.ordens, clientes: d.clientes, vendedoras: vend, equipe: eq });
+      gravarCache({ orcamentos: d.orcamentos, ordens: d.ordens, clientes: d.clientes, cerebro: d.cerebro, vendedoras: vend, equipe: eq });
       setAviso((a) => (a.startsWith("Sem conexão") ? "" : a));
     } catch (e) {
       console.error(e);
@@ -417,6 +419,7 @@ function App() {
           setOrcamentos(c.orcamentos || []);
           setOrdens(c.ordens || []);
           setClientes(c.clientes || []);
+          setCerebro(c.cerebro || []);
           setVendedoras(c.vendedoras || []);
           setEquipe(c.equipe || []);
         }
@@ -470,6 +473,22 @@ function App() {
   const donos = (equipe.filter((m) => m.papel === "dono").map((m) => String(m.email || "").toLowerCase()));
   const ehDono = Boolean(meuEmail) && (donos.length ? donos.includes(meuEmail) : meuEmail === "acesso@vigiar.app");
 
+  // Cérebro: conhecimento da empresa que o TRON usa em toda resposta.
+  const updCerebro = (next) => {
+    const antes = cerebro;
+    setCerebro(next);
+    sincronizarLista("cerebro", antes, next).catch(falhaAoSalvar);
+  };
+  const salvarMemoria = (m) => {
+    const existe = cerebro.some((x) => x.id === m.id);
+    updCerebro(existe ? cerebro.map((x) => (x.id === m.id ? m : x)) : [...cerebro, m]);
+    setToast(existe ? "Memória atualizada." : "Guardado no Cérebro.");
+  };
+  const excluirMemoria = (id) => {
+    updCerebro(cerebro.filter((x) => x.id !== id));
+    setToast("Memória apagada.");
+  };
+
   // Ações que o TRON pode executar — só rodam depois do dono confirmar na tela.
   const acoesTron = async (nome, e) => {
     const achaCliente = (id) => clientes.find((c) => c.id === id);
@@ -521,6 +540,17 @@ function App() {
         : e.status === "enviado" ? { dataEnvio: todayStr() } : {};
       updOrc(orcamentos.map((o) => (o.id === orc.id ? { ...o, status: e.status, ...extra } : o)));
       return { ok: true, mensagem: `Orçamento Nº ${orc.numero} agora está como "${(ORC_STATUS[e.status] || {}).label || e.status}".` };
+    }
+    if (nome === "salvar_memoria") {
+      if (!String(e.titulo || "").trim() || !String(e.conteudo || "").trim()) {
+        throw new Error("Memória precisa de título e conteúdo.");
+      }
+      const m = {
+        id: uid(), titulo: e.titulo.trim(), categoria: e.categoria || "Outros",
+        conteudo: e.conteudo.trim(), criadoEm: todayStr(), atualizadoEm: todayStr(),
+      };
+      updCerebro([...cerebro, m]);
+      return { ok: true, mensagem: `Guardado no Cérebro: ${m.titulo}.` };
     }
     throw new Error("Ação desconhecida: " + nome);
   };
@@ -910,6 +940,9 @@ function App() {
           orcamentos={orcamentos}
           ordens={ordens}
           clientes={clientes}
+          cerebro={cerebro}
+          onSalvarMemoria={salvarMemoria}
+          onExcluirMemoria={excluirMemoria}
           vendedoras={vendedoras}
           acoesTron={acoesTron}
           onToast={setToast}

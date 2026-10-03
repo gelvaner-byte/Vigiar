@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from "react";
 import {
   ShieldCheck, X, Lock, TrendingUp, FileText, Wrench, Users, Package,
-  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio,
+  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import TronChat from "./Tron.jsx";
+import CerebroPainel from "./Cerebro.jsx";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -88,7 +89,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, vendedoras = [], acoesTron, onToast, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, vendedoras = [], acoesTron, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const hoje = new Date().toISOString().slice(0, 10);
   const mes = hoje.slice(0, 7);
@@ -219,8 +220,18 @@ export default function Comando({ orcamentos, ordens, clientes, vendedoras = [],
                 clientes={clientes}
                 orcamentos={orcamentos}
                 ordens={ordens}
+                cerebro={cerebro}
                 vendedoras={vendedoras}
                 acoes={acoesTron}
+                onToast={onToast}
+              />
+            </Painel>
+
+            <Painel icon={<Brain size={14} />} titulo={`Cérebro · ${cerebro.length} memória${cerebro.length === 1 ? "" : "s"}`} className="cmd-cerebro">
+              <CerebroPainel
+                memorias={cerebro}
+                onSalvar={onSalvarMemoria}
+                onExcluir={onExcluirMemoria}
                 onToast={onToast}
               />
             </Painel>
