@@ -7,6 +7,7 @@ import { supabase } from "./supabaseOrc";
 import TronChat from "./Tron.jsx";
 import CerebroPainel from "./Cerebro.jsx";
 import { carregarFinanceiro, resumoFinanceiro } from "./financeiro";
+import { conferir, montarConfig } from "./senhaComando";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -23,33 +24,105 @@ const valorOS = (os) =>
 const diasEntre = (isoA, isoB) => Math.round((new Date(isoB) - new Date(isoA)) / 86400000);
 const MES_CURTO = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
-// Pede a senha de novo antes de abrir o painel: entrar no app não basta.
-function Tranca({ email, onLiberado, onFechar }) {
+// Tranca do Centro de Comando. Tem senha própria, separada da senha da conta.
+// Se ainda não existir, ele pede para criar. Esqueceu? Entra com a senha da conta e troca.
+function Tranca({ email, cfgSenha, onDefinirSenha, onLiberado, onFechar }) {
+  const precisaCriar = !cfgSenha || !cfgSenha.hash;
+  const [modo, setModo] = useState(precisaCriar ? "criar" : "entrar"); // entrar | criar | recuperar
   const [senha, setSenha] = useState("");
+  const [senha2, setSenha2] = useState("");
   const [erro, setErro] = useState("");
   const [indo, setIndo] = useState(false);
 
-  const entrar = async (e) => {
+  const enviar = async (e) => {
     e.preventDefault();
-    setIndo(true);
     setErro("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-    setIndo(false);
-    if (error) setErro("Senha incorreta.");
-    else onLiberado();
+    setIndo(true);
+    try {
+      if (modo === "entrar") {
+        if (await conferir(senha, cfgSenha)) onLiberado();
+        else setErro("Senha do acesso restrito incorreta.");
+      } else if (modo === "criar") {
+        if (senha.length < 4) { setErro("Use pelo menos 4 caracteres."); return; }
+        if (senha !== senha2) { setErro("As duas senhas não são iguais."); return; }
+        await onDefinirSenha(await montarConfig(senha));
+        onLiberado();
+      } else {
+        // Recuperar: confirma a senha da CONTA e deixa criar uma nova senha do painel.
+        const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
+        if (error) setErro("Senha da conta incorreta.");
+        else { setModo("criar"); setSenha(""); setSenha2(""); }
+      }
+    } finally {
+      setIndo(false);
+    }
+  };
+
+  const titulo = modo === "criar" ? "CRIAR SENHA DO PAINEL" : modo === "recuperar" ? "RECUPERAR ACESSO" : "ÁREA RESTRITA";
+  const texto = modo === "criar"
+    ? "Escolha uma senha só para o Centro de Comando. Ela é diferente da senha que você usa para entrar no app."
+    : modo === "recuperar"
+      ? "Digite a senha da sua conta (a mesma do login do app) para cadastrar uma nova senha do painel."
+      : "Digite a senha do Centro de Comando.";
+
+  return (
+    <div className="cmd-tranca">
+      <form onSubmit={enviar}>
+        <span className="cmd-cadeado"><Lock size={24} /></span>
+        <h2>{titulo}</h2>
+        <p>{texto}</p>
+        <input type="password" autoFocus value={senha} onChange={(ev) => setSenha(ev.target.value)}
+          placeholder={modo === "criar" ? "Nova senha do painel" : modo === "recuperar" ? "Senha da conta" : "Senha do painel"}
+          autoComplete={modo === "criar" ? "new-password" : "current-password"} required />
+        {modo === "criar" && (
+          <input type="password" value={senha2} onChange={(ev) => setSenha2(ev.target.value)}
+            placeholder="Repita a nova senha" autoComplete="new-password" required />
+        )}
+        {erro && <span className="cmd-erro">{erro}</span>}
+        <button type="submit" disabled={indo}>
+          {indo ? "VERIFICANDO…" : modo === "criar" ? "CRIAR E ENTRAR" : modo === "recuperar" ? "CONFIRMAR" : "DESBLOQUEAR"}
+        </button>
+        {modo === "entrar" && (
+          <button type="button" className="cmd-cancelar" onClick={() => { setModo("recuperar"); setSenha(""); setErro(""); }}>
+            Esqueci a senha do painel
+          </button>
+        )}
+        <button type="button" className="cmd-cancelar" onClick={onFechar}>Cancelar</button>
+      </form>
+    </div>
+  );
+}
+
+// Troca a senha do painel de dentro do Centro de Comando.
+function TrocarSenha({ cfgSenha, onDefinirSenha, onPronto, onToast }) {
+  const [atual, setAtual] = useState("");
+  const [nova, setNova] = useState("");
+  const [nova2, setNova2] = useState("");
+  const [erro, setErro] = useState("");
+
+  const salvar = async (e) => {
+    e.preventDefault();
+    setErro("");
+    if (!(await conferir(atual, cfgSenha))) { setErro("A senha atual não confere."); return; }
+    if (nova.length < 4) { setErro("A nova senha precisa de pelo menos 4 caracteres."); return; }
+    if (nova !== nova2) { setErro("As duas senhas novas não são iguais."); return; }
+    await onDefinirSenha(await montarConfig(nova));
+    onToast && onToast("Senha do painel trocada.");
+    onPronto();
   };
 
   return (
     <div className="cmd-tranca">
-      <form onSubmit={entrar}>
+      <form onSubmit={salvar}>
         <span className="cmd-cadeado"><Lock size={24} /></span>
-        <h2>ÁREA RESTRITA</h2>
-        <p>Confirme sua senha para abrir o Centro de Comando.</p>
-        <input type="password" autoFocus value={senha} onChange={(ev) => setSenha(ev.target.value)}
-          placeholder="Sua senha" autoComplete="current-password" required />
+        <h2>TROCAR SENHA DO PAINEL</h2>
+        <p>Essa senha vale só para abrir o Centro de Comando.</p>
+        <input type="password" autoFocus value={atual} onChange={(e2) => setAtual(e2.target.value)} placeholder="Senha atual" required />
+        <input type="password" value={nova} onChange={(e2) => setNova(e2.target.value)} placeholder="Nova senha" required />
+        <input type="password" value={nova2} onChange={(e2) => setNova2(e2.target.value)} placeholder="Repita a nova senha" required />
         {erro && <span className="cmd-erro">{erro}</span>}
-        <button type="submit" disabled={indo}>{indo ? "VERIFICANDO…" : "DESBLOQUEAR"}</button>
-        <button type="button" className="cmd-cancelar" onClick={onFechar}>Cancelar</button>
+        <button type="submit">SALVAR</button>
+        <button type="button" className="cmd-cancelar" onClick={onPronto}>Cancelar</button>
       </form>
     </div>
   );
@@ -90,8 +163,9 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, vendedoras = [], acoesTron, onToast, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
+  const [trocando, setTrocando] = useState(false);
   const [financeiro, setFinanceiro] = useState(null); // dados do app de gestão financeira
   const hoje = new Date().toISOString().slice(0, 10);
   const mes = hoje.slice(0, 7);
@@ -188,11 +262,20 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
             <p>ÁREA RESTRITA · {new Date().toLocaleDateString("pt-BR")}</p>
           </div>
         </div>
-        <button className="cmd-x" onClick={onFechar} aria-label="Fechar"><X size={20} /></button>
+        <div className="cmd-topo-btns">
+          {liberado && !trocando && (
+            <button className="cmd-x" onClick={() => setTrocando(true)} title="Trocar a senha do painel" aria-label="Trocar a senha do painel">
+              <Lock size={17} />
+            </button>
+          )}
+          <button className="cmd-x" onClick={onFechar} aria-label="Fechar"><X size={20} /></button>
+        </div>
       </header>
 
-      {!liberado ? (
-        <Tranca email={email} onLiberado={async () => {
+      {trocando ? (
+        <TrocarSenha cfgSenha={cfgSenha} onDefinirSenha={onDefinirSenha} onToast={onToast} onPronto={() => setTrocando(false)} />
+      ) : !liberado ? (
+        <Tranca email={email} cfgSenha={cfgSenha} onDefinirSenha={onDefinirSenha} onLiberado={async () => {
           setLiberado(true);
           // Só busca o financeiro depois da senha conferida.
           try { setFinanceiro(resumoFinanceiro(await carregarFinanceiro(), hoje)); }
@@ -367,6 +450,7 @@ function Estilo() {
 .cmd-topo h1{margin:0;font-size:14px;letter-spacing:3px;font-weight:800;font-family:ui-monospace,"Courier New",monospace}
 .cmd-topo h1 em{font-style:normal;color:#ff9a45}
 .cmd-topo p{margin:3px 0 0;font-size:10px;color:#6f87a8;letter-spacing:2px;font-family:ui-monospace,monospace}
+.cmd-topo-btns{display:flex;gap:8px}
 .cmd-x{width:38px;height:38px;border-radius:10px;border:1px solid rgba(120,180,255,.22);background:rgba(120,180,255,.08);
   color:#e8f0fb;display:grid;place-items:center;cursor:pointer}
 

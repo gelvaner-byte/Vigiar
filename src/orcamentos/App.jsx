@@ -403,6 +403,7 @@ function App() {
       const d = await carregarTudo();
       const vend = (d.config.vendedoras && d.config.vendedoras.lista) || [];
       const eq = (d.config.equipe && d.config.equipe.membros) || [];
+      setCfgSenhaComando(d.config.comando || null);
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
       setClientes(d.clientes);
@@ -470,6 +471,12 @@ function App() {
 
   // Centro de Comando: só para o dono, e ainda pede a senha de novo lá dentro.
   const [comandoAberto, setComandoAberto] = useState(false);
+  // Senha própria do Centro de Comando (guardamos só o resumo dela, nunca a senha).
+  const [cfgSenhaComando, setCfgSenhaComando] = useState(null);
+  const definirSenhaComando = async (cfg) => {
+    setCfgSenhaComando(cfg);
+    await salvarConfig("comando", cfg).catch(falhaAoSalvar);
+  };
   const donos = (equipe.filter((m) => m.papel === "dono").map((m) => String(m.email || "").toLowerCase()));
   const ehDono = Boolean(meuEmail) && (donos.length ? donos.includes(meuEmail) : meuEmail === "acesso@vigiar.app");
 
@@ -945,6 +952,8 @@ function App() {
           onExcluirMemoria={excluirMemoria}
           vendedoras={vendedoras}
           acoesTron={acoesTron}
+          cfgSenha={cfgSenhaComando}
+          onDefinirSenha={definirSenhaComando}
           onToast={setToast}
           email={meuEmail}
           onFechar={() => setComandoAberto(false)}
