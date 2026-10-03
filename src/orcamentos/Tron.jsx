@@ -41,31 +41,52 @@ function montarContexto({ clientes, orcamentos, ordens, vendedoras, hoje }) {
 const TEM_VOZ = typeof window !== "undefined" && "speechSynthesis" in window;
 const KEY_VOZ = "vigiar:tron:voz";
 
+// Escolhe a melhor voz instalada: as "Natural"/"Online" do Windows e as do Google
+// soam bem mais humanas que a padrão do sistema.
+const BOAS = [/natural/i, /online/i, /google/i, /francisca/i, /thal[ií]ta/i, /luciana/i, /ant[oô]nio/i];
 function vozBrasileira() {
-  const vozes = window.speechSynthesis.getVoices() || [];
-  return vozes.find((v) => /pt[-_]BR/i.test(v.lang))
-    || vozes.find((v) => /^pt/i.test(v.lang))
-    || null;
+  const vozes = (window.speechSynthesis.getVoices() || []).filter((v) => /^pt/i.test(v.lang));
+  if (!vozes.length) return null;
+  const br = vozes.filter((v) => /pt[-_]BR/i.test(v.lang));
+  const lista = br.length ? br : vozes;
+  for (const padrao of BOAS) {
+    const achou = lista.find((v) => padrao.test(v.name));
+    if (achou) return achou;
+  }
+  return lista[0];
 }
 // Tira marcações e links para a leitura não ficar esquisita.
 function paraFalar(texto) {
   return String(texto)
-    .replace(/https?:\/\/\S+/g, "link")
-    .replace(/[*_`#>•]/g, " ")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/R\$ ?([\d.]+),(\d{2})/g, (_, inteiro, centavos) =>
+      `${inteiro.replace(/\./g, "")} reais${centavos !== "00" ? ` e ${Number(centavos)} centavos` : ""}`)
+    .replace(/(\d+)%/g, "$1 por cento")
+    .replace(/(\d{1,2}):(\d{2})/g, (_, h, m) => (m === "00" ? `${Number(h)} horas` : `${Number(h)} e ${Number(m)}`))
+    .replace(/[*_`#>•·|]/g, " ")
+    .replace(/^\s*[-–]\s*/gm, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
+// Quebra em frases e emenda uma na outra: some a pausa longa e o corte de texto
+// grande que os navegadores fazem, deixando a leitura mais natural.
 function falar(texto) {
   if (!TEM_VOZ) return;
   const limpo = paraFalar(texto);
   if (!limpo) return;
   window.speechSynthesis.cancel();
-  const fala = new SpeechSynthesisUtterance(limpo);
   const voz = vozBrasileira();
-  if (voz) fala.voice = voz;
-  fala.lang = (voz && voz.lang) || "pt-BR";
-  fala.rate = 1.05;
-  window.speechSynthesis.speak(fala);
+  const pedacos = limpo.match(/[^.!?\n]+[.!?]*/g) || [limpo];
+  pedacos.forEach((pedaco) => {
+    const frase = pedaco.trim();
+    if (!frase) return;
+    const fala = new SpeechSynthesisUtterance(frase);
+    if (voz) fala.voice = voz;
+    fala.lang = (voz && voz.lang) || "pt-BR";
+    fala.rate = 1.0;   // ritmo de conversa
+    fala.pitch = 1.0;
+    window.speechSynthesis.speak(fala);
+  });
 }
 
 const ROTULO_ACAO = {
