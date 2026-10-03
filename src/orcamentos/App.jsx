@@ -7,6 +7,7 @@ import {
   Megaphone, TrendingUp
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
+import Comando from "./Comando.jsx";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
   assinarMudancas, lerCache, gravarCache,
@@ -464,6 +465,11 @@ function App() {
     salvarConfig("equipe", { membros: next }).catch(falhaAoSalvar);
   };
 
+  // Centro de Comando: só para o dono, e ainda pede a senha de novo lá dentro.
+  const [comandoAberto, setComandoAberto] = useState(false);
+  const donos = (equipe.filter((m) => m.papel === "dono").map((m) => String(m.email || "").toLowerCase()));
+  const ehDono = Boolean(meuEmail) && (donos.length ? donos.includes(meuEmail) : meuEmail === "acesso@vigiar.app");
+
   // Papel de quem está logado: técnico só vê a agenda dele; o resto é escritório.
   const euNaEquipe = equipe.find((m) => String(m.email || "").toLowerCase() === meuEmail);
   const papel = euNaEquipe && euNaEquipe.papel === "tecnico" ? "tecnico" : "escritorio";
@@ -674,6 +680,11 @@ function App() {
         </div>
         <div className="vg-top-actions">
           {papel === "tecnico" && <span className="vg-papel">Técnico</span>}
+          {ehDono && (
+            <button className="vg-comando" onClick={() => setComandoAberto(true)} title="Centro de Comando (área restrita)">
+              <ShieldCheck size={16} />
+            </button>
+          )}
           <button className="vg-perfil" onClick={() => setPerfilAberto(true)}>
             <UserRound size={15} />
             <span>{papel === "tecnico" ? primeiroNome(meuNome) : vendAtiva ? primeiroNome(vendAtiva.nome) : "Perfil"}</span>
@@ -837,6 +848,15 @@ function App() {
           onImportar={importarBackup}
           onSair={() => supabase.auth.signOut()}
           onFechar={() => setPerfilAberto(false)}
+        />
+      )}
+      {comandoAberto && ehDono && (
+        <Comando
+          orcamentos={orcamentos}
+          ordens={ordens}
+          clientes={clientes}
+          email={meuEmail}
+          onFechar={() => setComandoAberto(false)}
         />
       )}
       {toast && <div className="vg-toast">{toast}</div>}
@@ -2839,6 +2859,8 @@ function Estilos() {
 .vg-alerta-txt strong{font-size:14px}
 .vg-alerta-txt span{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vg-chev{transform:rotate(180deg);color:#d9b694;flex-shrink:0}
+.vg-comando{width:38px;height:38px;border-radius:11px;border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.12);color:#fff;display:grid;place-items:center;cursor:pointer}
 .vg-papel{background:rgba(255,255,255,.16);color:#fff;font-size:11px;font-weight:800;letter-spacing:.5px;padding:5px 10px;border-radius:999px}
 .vg-levant{background:#fff6ed;border:1px solid var(--line);border-radius:13px;padding:4px 12px 12px;margin-bottom:14px}
 .vg-levant p{margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap}
