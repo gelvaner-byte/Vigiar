@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Send, Check, X, Loader, Copy, AlertTriangle, Volume2, VolumeX } from "lucide-react";
+import { Bot, Send, Check, X, Loader, Copy, AlertTriangle, Volume2, VolumeX, CircleDollarSign } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 
 /* ============ TRON — assistente do Centro de Comando ============ */
@@ -134,12 +134,35 @@ function Acao({ bloco, clientes, onConfirmar, onRecusar, estado }) {
   );
 }
 
-export default function Tron({ clientes, orcamentos, ordens, cerebro = [], vendedoras, acoes, onToast }) {
+const AGENTES = {
+  tron: {
+    nome: "TRON", icone: <Bot size={14} />, papel: "braço direito",
+    sugestoes: [
+      "Quem eu preciso cobrar hoje?",
+      "O que tenho para fazer esta semana?",
+      "Qual origem está dando mais lucro?",
+    ],
+    abertura: "Sou o TRON. Vejo seus clientes, orçamentos, serviços e agenda. Pergunte o que quiser — e, quando for mexer no sistema, eu mostro antes e você confirma.",
+  },
+  financeiro: {
+    nome: "FINANCEIRO", icone: <CircleDollarSign size={14} />, papel: "caixa e margem",
+    sugestoes: [
+      "Como está o caixa este mês?",
+      "Quem está me devendo?",
+      "Tem conta vencida?",
+      "Qual foi minha margem nos últimos serviços?",
+    ],
+    abertura: "Sou o agente FINANCEIRO. Enxergo despesas fixas, custos de fornecedor, o que você tem a receber, o estoque e os serviços fechados. Pergunte do dinheiro — eu analiso e recomendo, mas não mexo em nada.",
+  },
+};
+
+export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, vendedoras, acoes, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [conversa, setConversa] = useState([]); // formato da API: {role, content}
   const [texto, setTexto] = useState("");
   const [pensando, setPensando] = useState(false);
   const [erro, setErro] = useState("");
+  const [agente, setAgente] = useState("tron");
   const [estados, setEstados] = useState({}); // id do tool_use -> feito | recusado
   const [voz, setVoz] = useState(() => {
     try { return localStorage.getItem(KEY_VOZ) !== "0"; } catch { return true; }
@@ -154,8 +177,11 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], vende
   };
 
   const contexto = useMemo(
-    () => montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje }),
-    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje],
+    () => {
+      const base = montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje });
+      return agente === "financeiro" ? { ...base, financeiro: financeiro || null } : base;
+    },
+    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro],
   );
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [conversa, pensando]);
@@ -169,7 +195,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], vende
       const r = await fetch("/api/tron", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ mensagens, contexto }),
+        body: JSON.stringify({ mensagens, contexto, agente }),
       });
       const resposta = await r.json();
       if (!r.ok) { setErro(resposta.erro || "Falha ao falar com o TRON."); return null; }
@@ -235,20 +261,33 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], vende
     catch { onToast && onToast("Não consegui copiar."); }
   };
 
-  const sugestoes = [
-    "Quem eu preciso cobrar hoje?",
-    "Como está o mês até agora?",
-    "Qual origem está dando mais lucro?",
-    "O que tenho para fazer esta semana?",
-  ];
+  const perfil = AGENTES[agente];
+  const sugestoes = perfil.sugestoes;
+  const trocar = (novo) => {
+    if (novo === agente) return;
+    setAgente(novo);
+    setConversa([]);      // cada agente começa a conversa dele
+    setEstados({});
+    setErro("");
+    if (TEM_VOZ) window.speechSynthesis.cancel();
+  };
 
   return (
     <div className="tron">
+      <div className="tron-agentes">
+        {Object.entries(AGENTES).map(([id, a]) => (
+          <button key={id} className={"tron-ag" + (agente === id ? " on" : "")} onClick={() => trocar(id)}>
+            {a.icone} {a.nome}
+          </button>
+        ))}
+        <span className="tron-papel">{perfil.papel}</span>
+      </div>
+
       <div className="tron-conversa">
         {conversa.length === 0 && !pensando && (
           <div className="tron-vazio">
-            <span className="tron-ava"><Bot size={20} /></span>
-            <p>Sou o <b>TRON</b>. Vejo seus clientes, orçamentos, serviços e agenda. Pergunte o que quiser — e, quando for mexer no sistema, eu mostro antes e você confirma.</p>
+            <span className="tron-ava">{agente === "financeiro" ? <CircleDollarSign size={20} /> : <Bot size={20} />}</span>
+            <p>{perfil.abertura}</p>
             <div className="tron-sug">
               {sugestoes.map((s) => (
                 <button key={s} onClick={() => enviar(null, s)}>{s}</button>
@@ -292,12 +331,18 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], vende
             {voz ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </button>
         )}
-        <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Fale com o TRON…" disabled={pensando} />
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={`Fale com o ${perfil.nome}…`} disabled={pensando} />
         <button type="submit" disabled={pensando || !texto.trim()} aria-label="Enviar"><Send size={16} /></button>
       </form>
 
       <style>{`
 .tron{display:flex;flex-direction:column;gap:10px}
+.tron-agentes{display:flex;align-items:center;gap:7px;flex-wrap:wrap;border-bottom:1px solid rgba(120,180,255,.12);padding-bottom:9px}
+.tron-ag{display:inline-flex;align-items:center;gap:6px;background:rgba(120,180,255,.07);border:1px solid rgba(120,180,255,.2);
+  color:#8ba0bd;border-radius:99px;padding:7px 13px;font-size:11.5px;font-weight:800;letter-spacing:.8px;
+  font-family:ui-monospace,monospace;cursor:pointer}
+.tron-ag.on{background:rgba(255,140,50,.16);border-color:rgba(255,140,50,.5);color:#ff9a45}
+.tron-papel{margin-left:auto;font-size:10.5px;color:#6f87a8;letter-spacing:.5px}
 .tron-conversa{display:flex;flex-direction:column;gap:10px;max-height:460px;overflow-y:auto;padding-right:4px}
 .tron-vazio{text-align:center;padding:10px 4px}
 .tron-ava{width:44px;height:44px;border-radius:50%;display:inline-grid;place-items:center;color:#ff9a45;

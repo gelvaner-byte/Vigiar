@@ -6,6 +6,7 @@ import {
 import { supabase } from "./supabaseOrc";
 import TronChat from "./Tron.jsx";
 import CerebroPainel from "./Cerebro.jsx";
+import { carregarFinanceiro, resumoFinanceiro } from "./financeiro";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -91,6 +92,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
 
 export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, vendedoras = [], acoesTron, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
+  const [financeiro, setFinanceiro] = useState(null); // dados do app de gestão financeira
   const hoje = new Date().toISOString().slice(0, 10);
   const mes = hoje.slice(0, 7);
 
@@ -190,7 +192,12 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
       </header>
 
       {!liberado ? (
-        <Tranca email={email} onLiberado={() => setLiberado(true)} onFechar={onFechar} />
+        <Tranca email={email} onLiberado={async () => {
+          setLiberado(true);
+          // Só busca o financeiro depois da senha conferida.
+          try { setFinanceiro(resumoFinanceiro(await carregarFinanceiro(), hoje)); }
+          catch (e) { console.error(e); }
+        }} onFechar={onFechar} />
       ) : (
         <div className="cmd-sala">
           {/* ===== núcleo ===== */}
@@ -221,6 +228,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
                 orcamentos={orcamentos}
                 ordens={ordens}
                 cerebro={cerebro}
+                financeiro={financeiro}
                 vendedoras={vendedoras}
                 acoes={acoesTron}
                 onToast={onToast}

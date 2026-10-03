@@ -8,6 +8,29 @@ const MODELO = process.env.TRON_MODELO || 'claude-sonnet-5-5'
 const WORKSPACE = process.env.ANTHROPIC_WORKSPACE_ID || ''
 const MAX_TOKENS = 1600
 
+const FINANCEIRO = `Você é o agente FINANCEIRO da VIGIAR SISTEMAS, empresa familiar de segurança
+eletrônica em Belo Horizonte. Você cuida do dinheiro e fala com o dono, o Gelvan.
+
+SEU TRABALHO
+Olhar caixa, margem e inadimplência e dizer o que fazer hoje. Você enxerga as despesas fixas,
+os custos com fornecedores, os débitos a receber e o estoque (vêm em "financeiro"), além dos
+serviços concluídos (receita) e dos orçamentos.
+- Compare entrada e saída do mês e diga, em dinheiro, como o mês está.
+- Aponte conta vencida e cliente em atraso pelo nome, com valor e há quantos dias.
+- Fale de margem: serviço fechado versus custo de material daquele serviço.
+- Quando faltar dado para concluir, diga qual falta — não chute número.
+- Você não paga conta, não cobra ninguém e não mexe no app financeiro. Você analisa e recomenda.
+  Pode guardar conhecimento no Cérebro quando o Gelvan definir uma regra (ex.: margem mínima).
+
+COMO VOCÊ FALA
+Suas respostas são LIDAS EM VOZ ALTA.
+- Converse como um contador de confiança que fala claro, sem termo difícil.
+- Frases curtas, no máximo 3 ou 4 por resposta, a não ser que ele peça o detalhe.
+- Nada de listas com marcadores, títulos, asteriscos ou tabelas. Fale corrido.
+- Valores do jeito que se fala: "três mil e duzentos reais", "quinze por cento".
+- Comece pelo número que importa. Depois o que fazer com ele.
+- Se a situação for ruim, fale na lata. O dono precisa saber, não ser agradado.`
+
 const PERFIL = `Você é o TRON, braço direito do Gelvan na VIGIAR SISTEMAS, empresa familiar de
 segurança eletrônica em Belo Horizonte (Pampulha e região), com 25 anos de mercado.
 A Vigiar vende, instala e faz manutenção de câmeras, alarmes, cerca elétrica, interfone,
@@ -160,7 +183,12 @@ export default async function handler(req, res) {
   const email = await donoAutenticado(req)
   if (!email) return res.status(401).json({ erro: 'Entre no app com a conta do dono para falar com o TRON.' })
 
-  const { mensagens = [], contexto = {} } = req.body || {}
+  const { mensagens = [], contexto = {}, agente = 'tron' } = req.body || {}
+  const perfil = agente === 'financeiro' ? FINANCEIRO : PERFIL
+  // O financeiro analisa e recomenda; não mexe na agenda nem no cadastro.
+  const ferramentas = agente === 'financeiro'
+    ? FERRAMENTAS.filter((f) => f.name === 'salvar_memoria')
+    : FERRAMENTAS
   if (!Array.isArray(mensagens) || mensagens.length === 0) return res.status(400).json({ erro: 'Sem mensagem.' })
 
   const retrato = `RETRATO DO SISTEMA (dados reais, agora)\nHoje: ${contexto.hoje}\n\n${JSON.stringify(contexto, null, 1)}`
@@ -184,10 +212,10 @@ export default async function handler(req, res) {
         thinking: { type: 'between_tools' },
         output_config: { effort: 'low' },
         system: [
-          { type: 'text', text: PERFIL },
+          { type: 'text', text: perfil },
           { type: 'text', text: retrato },
         ],
-        tools: FERRAMENTAS,
+        tools: ferramentas,
         messages: mensagens,
       }),
     })
