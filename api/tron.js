@@ -3,6 +3,8 @@
 // Só responde a quem está logado no app E consta na lista de donos.
 
 const MODELO = 'claude-sonnet-5'
+// Preencha com o id do workspace (wrkspc_...) OU defina ANTHROPIC_WORKSPACE_ID na Vercel.
+const WORKSPACE = process.env.ANTHROPIC_WORKSPACE_ID || ''
 const MAX_TOKENS = 1600
 
 const PERFIL = `Você é o TRON, braço direito do Gelvan na VIGIAR SISTEMAS, empresa familiar de
@@ -132,6 +134,9 @@ export default async function handler(req, res) {
         'content-type': 'application/json',
         'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01',
+        // Chave com escopo de organização precisa dizer em qual workspace gastar.
+        // (o id do workspace não é segredo; a chave é que é)
+        ...(WORKSPACE ? { 'anthropic-workspace-id': WORKSPACE } : {}),
       },
       body: JSON.stringify({
         model: MODELO,
