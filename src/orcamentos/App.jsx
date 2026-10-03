@@ -470,6 +470,61 @@ function App() {
   const donos = (equipe.filter((m) => m.papel === "dono").map((m) => String(m.email || "").toLowerCase()));
   const ehDono = Boolean(meuEmail) && (donos.length ? donos.includes(meuEmail) : meuEmail === "acesso@vigiar.app");
 
+  // Ações que o TRON pode executar — só rodam depois do dono confirmar na tela.
+  const acoesTron = async (nome, e) => {
+    const achaCliente = (id) => clientes.find((c) => c.id === id);
+    if (nome === "criar_cliente") {
+      if (!String(e.nome || "").trim()) throw new Error("Falta o nome do cliente.");
+      const cli = {
+        id: uid(), nome: e.nome.trim(), telefone: e.telefone || "", telefone2: "",
+        endereco: e.endereco || "", bairro: e.bairro || "", documento: "", email: "",
+        observacoes: e.observacoes || "", origem: e.origem || "", campanha: "", criadoEm: todayStr(),
+      };
+      updClientes([...clientes, cli]);
+      return { ok: true, clienteId: cli.id, mensagem: `Cliente ${cli.nome} cadastrado.` };
+    }
+    if (nome === "criar_orcamento") {
+      const cli = achaCliente(e.clienteId);
+      if (!cli) throw new Error("Cliente não encontrado. Cadastre o cliente primeiro.");
+      const orc = {
+        id: uid(), numero: nextNumero(orcamentos), ...dadosDoCliente(cli),
+        descricaoServico: e.descricaoServico || "", dataVisita: e.dataVisita, horaVisita: e.horaVisita || "",
+        duracaoVisita: DURACAO_VISITA, status: "agendado", prazoEnvio: "", itens: [], observacoes: "",
+        vendedor: e.vendedor || (vendAtiva ? vendAtiva.nome : ""), validadeDias: 7, dataEnvio: "", criadoEm: todayStr(),
+      };
+      updOrc([...orcamentos, orc]);
+      return { ok: true, orcamentoId: orc.id, numero: orc.numero, mensagem: `Visita do orçamento Nº ${orc.numero} agendada para ${fmtDate(orc.dataVisita)}.` };
+    }
+    if (nome === "agendar_servico") {
+      const cli = achaCliente(e.clienteId);
+      if (!cli) throw new Error("Cliente não encontrado.");
+      const duracao = Number(e.duracaoHoras) || DURACAO_PADRAO;
+      const conflito = acharConflito({ ordens, data: e.dataServico, hora: e.horaServico, duracao, soServicos: true });
+      if (conflito) throw new Error(`Horário ocupado: ${textoConflito(conflito)}`);
+      const orc = e.orcamentoId ? orcamentos.find((o) => o.id === e.orcamentoId) : null;
+      const os = {
+        id: uid(), numero: nextNumero(ordens), orcamentoId: orc ? orc.id : "", orcamentoNum: orc ? orc.numero : "",
+        ...dadosDoCliente(cli), descricao: e.descricao || (orc ? orc.descricaoServico : "") || "",
+        itens: orc ? orc.itens || [] : [], materiais: orc ? materiaisOS({ itens: orc.itens }) : [],
+        valor: e.valor != null ? e.valor : (orc ? itemsTotal(orc.itens) : ""),
+        dataServico: e.dataServico, horaServico: e.horaServico || "", duracaoHoras: duracao,
+        status: "agendada", observacoes: "", criadoEm: todayStr(),
+      };
+      updOs([...ordens, os]);
+      return { ok: true, osId: os.id, numero: os.numero, mensagem: `OS Nº ${os.numero} agendada para ${fmtDate(os.dataServico)} às ${os.horaServico || "—"}.` };
+    }
+    if (nome === "mudar_status_orcamento") {
+      const orc = orcamentos.find((o) => o.id === e.orcamentoId);
+      if (!orc) throw new Error("Orçamento não encontrado.");
+      const extra = e.status === "aprovado"
+        ? { autorizadoEm: new Date().toISOString(), autorizadoPor: meuNome || meuEmail }
+        : e.status === "enviado" ? { dataEnvio: todayStr() } : {};
+      updOrc(orcamentos.map((o) => (o.id === orc.id ? { ...o, status: e.status, ...extra } : o)));
+      return { ok: true, mensagem: `Orçamento Nº ${orc.numero} agora está como "${(ORC_STATUS[e.status] || {}).label || e.status}".` };
+    }
+    throw new Error("Ação desconhecida: " + nome);
+  };
+
   // Papel de quem está logado: técnico só vê a agenda dele; o resto é escritório.
   const euNaEquipe = equipe.find((m) => String(m.email || "").toLowerCase() === meuEmail);
   const papel = euNaEquipe && euNaEquipe.papel === "tecnico" ? "tecnico" : "escritorio";
@@ -855,6 +910,9 @@ function App() {
           orcamentos={orcamentos}
           ordens={ordens}
           clientes={clientes}
+          vendedoras={vendedoras}
+          acoesTron={acoesTron}
+          onToast={setToast}
           email={meuEmail}
           onFechar={() => setComandoAberto(false)}
         />

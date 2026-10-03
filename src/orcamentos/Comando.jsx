@@ -4,6 +4,7 @@ import {
   AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
+import TronChat from "./Tron.jsx";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -87,7 +88,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, vendedoras = [], acoesTron, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const hoje = new Date().toISOString().slice(0, 10);
   const mes = hoje.slice(0, 7);
@@ -213,6 +214,17 @@ export default function Comando({ orcamentos, ordens, clientes, email, onFechar 
           </div>
 
           <div className="cmd-grade">
+            <Painel icon={<Bot size={14} />} titulo="TRON · seu braço direito" className="cmd-tron">
+              <TronChat
+                clientes={clientes}
+                orcamentos={orcamentos}
+                ordens={ordens}
+                vendedoras={vendedoras}
+                acoes={acoesTron}
+                onToast={onToast}
+              />
+            </Painel>
+
             <Painel icon={<Activity size={14} />} titulo="Faturamento · 6 meses">
               <Grafico serie={d.serie} />
             </Painel>
@@ -294,8 +306,8 @@ export default function Comando({ orcamentos, ordens, clientes, email, onFechar 
               </ul>
             </Painel>
 
-            <Painel icon={<Bot size={14} />} titulo="Agentes de IA" className="cmd-ia">
-              <p className="cmd-dim">Nenhum ativado ainda. Cada um entra quando você quiser, um por vez.</p>
+            <Painel icon={<Bot size={14} />} titulo="Outros agentes" className="cmd-ia">
+              <p className="cmd-dim">O TRON já está ativo. Estes são os próximos — cada um entra quando você quiser.</p>
               <ul className="cmd-nos">
                 {AGENTES.map((a) => (
                   <li key={a.nome}>
@@ -387,7 +399,9 @@ function Estilo() {
 /* painéis */
 .cmd-grade{display:grid;grid-template-columns:1fr;gap:12px}
 @media (min-width:760px){.cmd-grade{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:760px){.cmd-tron{grid-column:span 2}}
 @media (min-width:1120px){.cmd-grade{grid-template-columns:repeat(3,1fr)}
+  .cmd-tron{grid-column:span 2;grid-row:span 2}
   .cmd-ia{grid-column:span 2}}
 .cmd-painel{background:rgba(10,18,32,.72);border:1px solid rgba(120,180,255,.16);backdrop-filter:blur(3px);
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
