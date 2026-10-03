@@ -235,6 +235,7 @@ function Estilo() {
 .cer-ver{background:rgba(120,180,255,.12);border:1px solid rgba(120,180,255,.25);color:#b9cbe4;border-radius:99px;
   padding:6px 11px;font-size:11.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap}
 .cer-tela{position:relative;border-radius:14px;overflow:hidden;background:#070b14;
+  width:90%;margin:0 auto;
   background-image:radial-gradient(60% 50% at 50% 50%,rgba(91,140,255,.1),transparent 70%);
   border:1px solid rgba(120,180,255,.12)}
 .cer-svg{width:100%;height:auto;display:block}
