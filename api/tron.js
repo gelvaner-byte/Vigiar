@@ -157,3 +157,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ erro: 'Falha ao falar com o TRON: ' + String(e.message || e) })
   }
 }
+
+// TRON ativo desde 2026-10-03.
