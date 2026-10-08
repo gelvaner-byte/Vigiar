@@ -167,6 +167,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
 export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const [trocando, setTrocando] = useState(false);
+  const [aba, setAba] = useState("geral");      // geral | tron | ml | cerebro | agentes
   const [financeiro, setFinanceiro] = useState(null); // dados do app de gestão financeira
   const [ml, setMl] = useState(null);                 // dados reais da conta do Mercado Livre
   const [lendoMl, setLendoMl] = useState(false);
@@ -250,6 +251,14 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
 
   const alertas = d.atrasadosEnvio.length + d.visitasAtrasadas.length + d.osAtrasadas.length + d.parados.length;
 
+  const ABAS = [
+    { id: "geral", nome: "VISÃO GERAL", icon: <Activity size={14} />, badge: alertas || null, urgente: alertas > 0 },
+    { id: "tron", nome: "TRON", icon: <Bot size={14} /> },
+    { id: "ml", nome: "MERCADO LIVRE", icon: <ShoppingCart size={14} />, badge: ml?.anuncios?.ativos || null },
+    { id: "cerebro", nome: "CÉREBRO", icon: <Brain size={14} />, badge: cerebro.length || null },
+    { id: "agentes", nome: "AGENTES", icon: <Radio size={14} /> },
+  ];
+
   const AGENTES = [
     { nome: "VENDAS", icon: <TrendingUp size={16} />, faz: "cobra orçamento parado" },
     { nome: "TRÁFEGO", icon: <Megaphone size={16} />, faz: "onde investir e o que cortar" },
@@ -293,7 +302,19 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
           atualizarMl();
         }} onFechar={onFechar} />
       ) : (
+        <>
+        <nav className="cmd-abas" role="tablist">
+          {ABAS.map((a) => (
+            <button key={a.id} role="tab" aria-selected={aba === a.id}
+              className={"cmd-aba" + (aba === a.id ? " ativa" : "")} onClick={() => setAba(a.id)}>
+              {a.icon}<span>{a.nome}</span>
+              {a.badge ? <i className={"cmd-aba-n" + (a.urgente ? " urgente" : "")}>{a.badge}</i> : null}
+            </button>
+          ))}
+        </nav>
+
         <div className="cmd-sala">
+        {aba === "geral" && (<>
           {/* ===== núcleo ===== */}
           <div className="cmd-nucleo">
             <div className="cmd-anel a1" />
@@ -316,43 +337,6 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
           </div>
 
           <div className="cmd-grade">
-            <Painel icon={<Bot size={14} />} titulo="TRON · seu braço direito" className="cmd-tron">
-              <TronChat
-                clientes={clientes}
-                orcamentos={orcamentos}
-                ordens={ordens}
-                cerebro={cerebro}
-                financeiro={financeiro}
-                mercadoLivre={ml}
-                custosML={custosML}
-                metaMargem={metaMargem}
-                vendedoras={vendedoras}
-                acoes={acoesTron}
-                onToast={onToast}
-              />
-            </Painel>
-
-            <Painel icon={<ShoppingCart size={14} />} titulo="Mercado Livre" className="cmd-ml">
-              <PainelML
-                dados={ml}
-                carregando={lendoMl}
-                onAtualizar={atualizarMl}
-                custos={custosML}
-                onSalvarCusto={onSalvarCustoML}
-                metaMargem={metaMargem}
-                onToast={onToast}
-              />
-            </Painel>
-
-            <Painel icon={<Brain size={14} />} titulo={`Cérebro · ${cerebro.length} memória${cerebro.length === 1 ? "" : "s"}`} className="cmd-cerebro">
-              <CerebroPainel
-                memorias={cerebro}
-                onSalvar={onSalvarMemoria}
-                onExcluir={onExcluirMemoria}
-                onToast={onToast}
-              />
-            </Painel>
-
             <Painel icon={<Activity size={14} />} titulo="Faturamento · 6 meses">
               <Grafico serie={d.serie} />
             </Painel>
@@ -433,22 +417,69 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
                 <li><i className="off" /> Backup automático no Drive <em>a configurar</em></li>
               </ul>
             </Painel>
-
-            <Painel icon={<Bot size={14} />} titulo="Outros agentes" className="cmd-ia">
-              <p className="cmd-dim">O TRON já está ativo. Estes são os próximos — cada um entra quando você quiser.</p>
-              <ul className="cmd-nos">
-                {AGENTES.map((a) => (
-                  <li key={a.nome}>
-                    <span className="cmd-no-ico">{a.icon}</span>
-                    <b>{a.nome}</b>
-                    <em>{a.faz}</em>
-                    <span className="cmd-no-tag">a ativar</span>
-                  </li>
-                ))}
-              </ul>
-            </Painel>
           </div>
+        </>)}
+
+        {aba === "tron" && (
+          <Painel icon={<Bot size={14} />} titulo="TRON · seu braço direito" className="cmd-cheio">
+            <TronChat
+              clientes={clientes}
+              orcamentos={orcamentos}
+              ordens={ordens}
+              cerebro={cerebro}
+              financeiro={financeiro}
+              mercadoLivre={ml}
+              custosML={custosML}
+              metaMargem={metaMargem}
+              vendedoras={vendedoras}
+              acoes={acoesTron}
+              onToast={onToast}
+            />
+          </Painel>
+        )}
+
+        {aba === "ml" && (
+          <Painel icon={<ShoppingCart size={14} />} titulo="Mercado Livre" className="cmd-cheio">
+            <PainelML
+              dados={ml}
+              carregando={lendoMl}
+              onAtualizar={atualizarMl}
+              custos={custosML}
+              onSalvarCusto={onSalvarCustoML}
+              metaMargem={metaMargem}
+              onToast={onToast}
+            />
+          </Painel>
+        )}
+
+        {aba === "cerebro" && (
+          <Painel icon={<Brain size={14} />} titulo={`Cérebro · ${cerebro.length} memória${cerebro.length === 1 ? "" : "s"}`} className="cmd-cheio">
+            <CerebroPainel
+              memorias={cerebro}
+              onSalvar={onSalvarMemoria}
+              onExcluir={onExcluirMemoria}
+              onToast={onToast}
+            />
+          </Painel>
+        )}
+
+        {aba === "agentes" && (
+          <Painel icon={<Bot size={14} />} titulo="Outros agentes">
+            <p className="cmd-dim">O TRON já está ativo. Estes são os próximos — cada um entra quando você quiser.</p>
+            <ul className="cmd-nos">
+              {AGENTES.map((a) => (
+                <li key={a.nome}>
+                  <span className="cmd-no-ico">{a.icon}</span>
+                  <b>{a.nome}</b>
+                  <em>{a.faz}</em>
+                  <span className="cmd-no-tag">a ativar</span>
+                </li>
+              ))}
+            </ul>
+          </Painel>
+        )}
         </div>
+        </>
       )}
     </div>
   );
@@ -498,8 +529,28 @@ function Estilo() {
 .cmd-cancelar{background:transparent!important;color:#6f87a8!important;letter-spacing:1px!important;font-weight:600!important}
 .cmd-erro{color:#ff6b6b;font-size:13px;font-weight:600}
 
+/* abas */
+.cmd-abas{position:sticky;top:64px;z-index:2;display:flex;gap:6px;overflow-x:auto;padding:10px 16px;
+  background:rgba(5,8,15,.86);border-bottom:1px solid rgba(120,180,255,.14);backdrop-filter:blur(8px);
+  scrollbar-width:none}
+.cmd-abas::-webkit-scrollbar{display:none}
+.cmd-aba{display:flex;align-items:center;gap:7px;flex-shrink:0;cursor:pointer;white-space:nowrap;
+  padding:9px 14px;font-size:10.5px;font-weight:800;letter-spacing:1.6px;font-family:ui-monospace,monospace;
+  color:#7e94b4;background:rgba(120,180,255,.05);border:1px solid rgba(120,180,255,.16);
+  clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
+.cmd-aba:hover{color:#b9cbe4;border-color:rgba(120,180,255,.3)}
+.cmd-aba.ativa{color:#fff;background:rgba(255,140,50,.16);border-color:rgba(255,140,50,.55);
+  box-shadow:0 0 18px rgba(255,140,50,.18)}
+.cmd-aba.ativa svg{color:#ff9a45}
+.cmd-aba-n{font-style:normal;font-size:9.5px;min-width:17px;text-align:center;border-radius:99px;padding:2px 5px;
+  background:rgba(120,180,255,.16);color:#b9cbe4}
+.cmd-aba.ativa .cmd-aba-n{background:rgba(255,140,50,.3);color:#fff}
+.cmd-aba-n.urgente{background:rgba(255,107,107,.25);color:#ff8f8f}
+
 /* núcleo */
 .cmd-sala{position:relative;max-width:1340px;margin:0 auto;padding:22px 16px 40px}
+.cmd-cheio{min-height:calc(100vh - 190px);display:flex;flex-direction:column}
+.cmd-cheio .cmd-corpo{flex:1;min-height:0}
 .cmd-nucleo{position:relative;height:216px;display:grid;place-items:center;margin:6px 0 10px}
 .cmd-anel{position:absolute;border-radius:50%;border:1px solid rgba(255,140,50,.35)}
 .cmd-anel.a1{width:196px;height:196px;border-style:dashed;animation:cmdgira 26s linear infinite}
@@ -528,11 +579,7 @@ function Estilo() {
 /* painéis */
 .cmd-grade{display:grid;grid-template-columns:1fr;gap:12px}
 @media (min-width:760px){.cmd-grade{grid-template-columns:repeat(2,1fr)}}
-@media (min-width:760px){.cmd-tron,.cmd-cerebro{grid-column:span 2}}
-@media (min-width:1120px){.cmd-grade{grid-template-columns:repeat(3,1fr)}
-  .cmd-tron{grid-column:span 2;grid-row:span 2}
-  .cmd-cerebro{grid-column:span 3}
-  .cmd-ia{grid-column:span 2}}
+@media (min-width:1120px){.cmd-grade{grid-template-columns:repeat(3,1fr)}}
 .cmd-painel{background:rgba(10,18,32,.72);border:1px solid rgba(120,180,255,.16);backdrop-filter:blur(3px);
   clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
 .cmd-painel.alerta{border-color:rgba(255,107,107,.45)}
