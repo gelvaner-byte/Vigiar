@@ -382,6 +382,7 @@ function App() {
   const [ordens, setOrdens] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [cerebro, setCerebro] = useState([]); // memórias da empresa (área restrita)
+  const [custosML, setCustosML] = useState([]); // custo de cada anúncio do Mercado Livre
   const [cliAberto, setCliAberto] = useState(null); // ficha do cliente: objeto ou {novo:true}
   const [view, setView] = useState("hoje");
   const [orcAberto, setOrcAberto] = useState(null); // objeto ou {novo:true}
@@ -408,6 +409,7 @@ function App() {
       setOrdens(d.ordens);
       setClientes(d.clientes);
       setCerebro(d.cerebro || []);
+      setCustosML(d.ml_custos || []);
       setVendedoras(vend);
       setEquipe(eq);
       gravarCache({ orcamentos: d.orcamentos, ordens: d.ordens, clientes: d.clientes, cerebro: d.cerebro, vendedoras: vend, equipe: eq });
@@ -486,6 +488,16 @@ function App() {
     setCerebro(next);
     sincronizarLista("cerebro", antes, next).catch(falhaAoSalvar);
   };
+  // Custo de compra, imposto e frete por anúncio — a API do ML não entrega isso.
+  const salvarCustoML = (custo) => {
+    const antes = custosML;
+    const existe = custosML.some((c) => c.id === custo.id);
+    const next = existe ? custosML.map((c) => (c.id === custo.id ? { ...c, ...custo } : c)) : [...custosML, custo];
+    setCustosML(next);
+    sincronizarLista("ml_custos", antes, next).catch(falhaAoSalvar);
+    setToast("Custo salvo. A margem já aparece no anúncio.");
+  };
+
   const salvarMemoria = (m) => {
     const existe = cerebro.some((x) => x.id === m.id);
     updCerebro(existe ? cerebro.map((x) => (x.id === m.id ? m : x)) : [...cerebro, m]);
@@ -950,6 +962,8 @@ function App() {
           cerebro={cerebro}
           onSalvarMemoria={salvarMemoria}
           onExcluirMemoria={excluirMemoria}
+          custosML={custosML}
+          onSalvarCustoML={salvarCustoML}
           vendedoras={vendedoras}
           acoesTron={acoesTron}
           cfgSenha={cfgSenhaComando}

@@ -4,6 +4,7 @@ import {
   CircleDollarSign, Megaphone, Target, ShoppingCart, Users,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
+import { margemDoItem } from "./MercadoLivre.jsx";
 
 /* ============ TRON — assistente do Centro de Comando ============ */
 
@@ -185,7 +186,38 @@ const AGENTES = {
   },
 };
 
-export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, vendedoras, acoes, onToast }) {
+// O que o agente de Mercado Livre precisa saber, com a margem já calculada por anúncio.
+function contextoML(ml, custos, metaMargem) {
+  if (!ml || !ml.conectado || ml.erro) {
+    return { conectado: false, aviso: ml?.erro || "Conta do Mercado Livre não conectada: não há dados reais de anúncio, venda ou reputação." };
+  }
+  const porId = new Map((custos || []).map((c) => [c.id, c]));
+  return {
+    conectado: true,
+    metaMargemLiquida: metaMargem,
+    conta: ml.conta,
+    reputacao: ml.reputacao,
+    perguntasSemResposta: ml.perguntasSemResposta,
+    vendas30dias: {
+      pedidos: ml.vendas30dias.pedidos,
+      faturado: ml.vendas30dias.faturado,
+      ticketMedio: ml.vendas30dias.ticketMedio,
+      maisVendidos: ml.vendas30dias.maisVendidos,
+    },
+    anuncios: ml.anuncios.lista.map((i) => {
+      const m = margemDoItem(i, porId.get(i.id));
+      return {
+        id: i.id, titulo: i.titulo, preco: i.preco, estoque: i.estoque, vendidos: i.vendidos,
+        situacao: i.situacao, qualidadeAnuncio: i.qualidade,
+        custoCadastrado: porId.get(i.id) || null,
+        margemLiquida: m ? Number(m.margem.toFixed(1)) : null,
+        lucroPorVenda: m ? Number(m.lucro.toFixed(2)) : null,
+      };
+    }),
+  };
+}
+
+export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [conversa, setConversa] = useState([]); // formato da API: {role, content}
   const [texto, setTexto] = useState("");
@@ -210,9 +242,14 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
   const contexto = useMemo(
     () => {
       const base = montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje });
-      return agente === "financeiro" ? { ...base, financeiro: financeiro || null } : base;
+      // O TRON precisa dos dois, porque delega; cada especialista recebe o que usa.
+      if (agente === "tron") return { ...base, financeiro: financeiro || null, mercadoLivre: contextoML(mercadoLivre, custosML, metaMargem) };
+      if (agente === "financeiro") return { ...base, financeiro: financeiro || null };
+      if (agente === "mercadolivre") return { ...base, mercadoLivre: contextoML(mercadoLivre, custosML, metaMargem) };
+      if (agente === "trafego") return { ...base, mercadoLivre: contextoML(mercadoLivre, custosML, metaMargem) };
+      return base;
     },
-    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro],
+    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro, mercadoLivre, custosML, metaMargem],
   );
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [conversa, pensando]);

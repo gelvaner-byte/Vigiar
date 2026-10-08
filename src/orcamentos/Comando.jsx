@@ -1,13 +1,14 @@
 import React, { useMemo, useState } from "react";
 import {
   ShieldCheck, X, Lock, TrendingUp, FileText, Wrench, Users, Package,
-  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain,
+  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain, ShoppingCart,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import TronChat from "./Tron.jsx";
 import CerebroPainel from "./Cerebro.jsx";
 import { carregarFinanceiro, resumoFinanceiro } from "./financeiro";
 import { conferir, montarConfig } from "./senhaComando";
+import PainelML, { buscarDadosML, margemDoItem } from "./MercadoLivre.jsx";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -163,10 +164,19 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, onToast, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const [trocando, setTrocando] = useState(false);
   const [financeiro, setFinanceiro] = useState(null); // dados do app de gestão financeira
+  const [ml, setMl] = useState(null);                 // dados reais da conta do Mercado Livre
+  const [lendoMl, setLendoMl] = useState(false);
+
+  const atualizarMl = async () => {
+    setLendoMl(true);
+    try { setMl(await buscarDadosML()); }
+    catch (e) { setMl({ conectado: false, configurado: true, erro: String(e.message || e) }); }
+    finally { setLendoMl(false); }
+  };
   const hoje = new Date().toISOString().slice(0, 10);
   const mes = hoje.slice(0, 7);
 
@@ -277,9 +287,10 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
       ) : !liberado ? (
         <Tranca email={email} cfgSenha={cfgSenha} onDefinirSenha={onDefinirSenha} onLiberado={async () => {
           setLiberado(true);
-          // Só busca o financeiro depois da senha conferida.
+          // Só busca o financeiro e o Mercado Livre depois da senha conferida.
           try { setFinanceiro(resumoFinanceiro(await carregarFinanceiro(), hoje)); }
           catch (e) { console.error(e); }
+          atualizarMl();
         }} onFechar={onFechar} />
       ) : (
         <div className="cmd-sala">
@@ -312,8 +323,23 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
                 ordens={ordens}
                 cerebro={cerebro}
                 financeiro={financeiro}
+                mercadoLivre={ml}
+                custosML={custosML}
+                metaMargem={metaMargem}
                 vendedoras={vendedoras}
                 acoes={acoesTron}
+                onToast={onToast}
+              />
+            </Painel>
+
+            <Painel icon={<ShoppingCart size={14} />} titulo="Mercado Livre" className="cmd-ml">
+              <PainelML
+                dados={ml}
+                carregando={lendoMl}
+                onAtualizar={atualizarMl}
+                custos={custosML}
+                onSalvarCusto={onSalvarCustoML}
+                metaMargem={metaMargem}
                 onToast={onToast}
               />
             </Painel>
