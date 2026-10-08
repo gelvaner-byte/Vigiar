@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Send, Check, X, Loader, Copy, AlertTriangle, Volume2, VolumeX, CircleDollarSign } from "lucide-react";
+import {
+  Bot, Send, Check, X, Loader, Copy, AlertTriangle, Volume2, VolumeX,
+  CircleDollarSign, Megaphone, Target, ShoppingCart, Users,
+} from "lucide-react";
 import { supabase } from "./supabaseOrc";
 
 /* ============ TRON — assistente do Centro de Comando ============ */
@@ -136,13 +139,13 @@ function Acao({ bloco, clientes, onConfirmar, onRecusar, estado }) {
 
 const AGENTES = {
   tron: {
-    nome: "TRON", icone: <Bot size={14} />, papel: "braço direito",
+    nome: "TRON", icone: <Bot size={14} />, papel: "coordena a equipe",
     sugestoes: [
       "Quem eu preciso cobrar hoje?",
+      "Minhas vendas caíram, o que eu faço?",
       "O que tenho para fazer esta semana?",
-      "Qual origem está dando mais lucro?",
     ],
-    abertura: "Sou o TRON. Vejo seus clientes, orçamentos, serviços e agenda. Pergunte o que quiser — e, quando for mexer no sistema, eu mostro antes e você confirma.",
+    abertura: "Sou o TRON. Vejo seus clientes, orçamentos, serviços e agenda, e coordeno os especialistas: financeiro, marketing, tráfego e Mercado Livre. Pergunte o que quiser — quando for mexer no sistema, eu mostro antes e você confirma.",
   },
   financeiro: {
     nome: "FINANCEIRO", icone: <CircleDollarSign size={14} />, papel: "caixa e margem",
@@ -150,9 +153,35 @@ const AGENTES = {
       "Como está o caixa este mês?",
       "Quem está me devendo?",
       "Tem conta vencida?",
-      "Qual foi minha margem nos últimos serviços?",
     ],
     abertura: "Sou o agente FINANCEIRO. Enxergo despesas fixas, custos de fornecedor, o que você tem a receber, o estoque e os serviços fechados. Pergunte do dinheiro — eu analiso e recomendo, mas não mexo em nada.",
+  },
+  marketing: {
+    nome: "MARKETING", icone: <Megaphone size={14} />, papel: "marca e conteúdo",
+    sugestoes: [
+      "Me dá 5 ideias de Reels para esta semana",
+      "Monta uma campanha de cerca elétrica",
+      "Como vender contrato de manutenção para quem já é cliente?",
+    ],
+    abertura: "Sou o agente de MARKETING. Trabalho a marca, o conteúdo e as campanhas — para os serviços e para os produtos. Peço roteiro, legenda, texto de WhatsApp e calendário, que eu entrego pronto.",
+  },
+  trafego: {
+    nome: "TRÁFEGO", icone: <Target size={14} />, papel: "anúncio pago",
+    sugestoes: [
+      "Onde eu invisto 500 reais este mês?",
+      "Que palavras-chave usar para câmera em BH?",
+      "Como separo campanha de serviço e de produto?",
+    ],
+    abertura: "Sou o agente de TRÁFEGO. Google, Meta e Mercado Ads. Ainda não estou conectado às suas contas de anúncio, então trabalho com os números do app e com os relatórios que você me passar.",
+  },
+  mercadolivre: {
+    nome: "MERCADO LIVRE", icone: <ShoppingCart size={14} />, papel: "venda de produto",
+    sugestoes: [
+      "Com custo de 120 reais, por quanto vendo para ter 35% de margem?",
+      "Como melhorar título e foto de um anúncio?",
+      "Vale montar kit de câmera com DVR?",
+    ],
+    abertura: "Sou o agente de MERCADO LIVRE. Sua conta ainda não está conectada, então não vejo anúncio nem venda de verdade. Me passe os números que eu calculo margem, preço e o que mexer no anúncio.",
   },
 };
 
@@ -163,6 +192,8 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
   const [pensando, setPensando] = useState(false);
   const [erro, setErro] = useState("");
   const [agente, setAgente] = useState("tron");
+  const [pareceres, setPareceres] = useState({}); // índice da mensagem -> consultas feitas
+  const [aberto, setAberto] = useState({});       // parecer expandido na tela
   const [estados, setEstados] = useState({}); // id do tool_use -> feito | recusado
   const [voz, setVoz] = useState(() => {
     try { return localStorage.getItem(KEY_VOZ) !== "0"; } catch { return true; }
@@ -201,6 +232,10 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       if (!r.ok) { setErro(resposta.erro || "Falha ao falar com o TRON."); return null; }
       const nova = [...mensagens, { role: "assistant", content: resposta.content }];
       setConversa(nova);
+      // Guarda os pareceres dos especialistas para mostrar junto da resposta.
+      if (resposta.consultas?.length) {
+        setPareceres((p) => ({ ...p, [nova.length - 1]: resposta.consultas }));
+      }
       // Fala a resposta assim que ela chega (se a voz estiver ligada).
       if (voz) {
         const texto = (resposta.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
@@ -298,7 +333,26 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
 
         {conversa.map((m, i) => {
           const blocos = Array.isArray(m.content) ? m.content : [{ type: "text", text: String(m.content) }];
-          return blocos.map((b, j) => {
+          const consultas = pareceres[i];
+          const extras = consultas ? (
+            <div key={`c${i}`} className="tron-consultas">
+              <span className="tron-consultas-tit"><Users size={12} /> O TRON consultou {consultas.length === 1 ? "1 especialista" : `${consultas.length} especialistas`}</span>
+              {consultas.map((c, k) => (
+                <div key={k} className="tron-parecer">
+                  <button onClick={() => setAberto((a) => ({ ...a, [`${i}-${k}`]: !a[`${i}-${k}`] }))}>
+                    {AGENTES[c.especialista]?.icone} {c.nome}
+                  </button>
+                  {aberto[`${i}-${k}`] && (
+                    <div className="tron-parecer-txt">
+                      <em>{c.pergunta}</em>
+                      <p>{c.resposta}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null;
+          const saida = blocos.map((b, j) => {
             if (b.type === "text" && b.text?.trim()) {
               return (
                 <div key={`${i}-${j}`} className={"tron-msg " + (m.role === "user" ? "eu" : "ele")}>
@@ -317,6 +371,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
             }
             return null;
           });
+          return extras ? [extras, ...saida] : saida;
         })}
 
         {pensando && <div className="tron-msg ele pensando"><Loader size={14} /> pensando…</div>}
@@ -338,6 +393,16 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       <style>{`
 .tron{display:flex;flex-direction:column;gap:10px}
 .tron-agentes{display:flex;align-items:center;gap:7px;flex-wrap:wrap;border-bottom:1px solid rgba(120,180,255,.12);padding-bottom:9px}
+.tron-consultas{display:flex;flex-direction:column;gap:6px;background:rgba(120,180,255,.05);
+  border:1px solid rgba(120,180,255,.16);border-radius:12px;padding:10px 12px}
+.tron-consultas-tit{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1px;
+  text-transform:uppercase;color:#6f87a8;font-family:ui-monospace,monospace}
+.tron-parecer button{display:inline-flex;align-items:center;gap:6px;background:rgba(255,140,50,.12);
+  border:1px solid rgba(255,140,50,.35);color:#ff9a45;border-radius:99px;padding:5px 11px;
+  font-size:11px;font-weight:800;letter-spacing:.6px;font-family:ui-monospace,monospace;cursor:pointer}
+.tron-parecer-txt{margin-top:6px;border-left:2px solid rgba(255,140,50,.35);padding-left:10px}
+.tron-parecer-txt em{display:block;font-style:normal;font-size:11.5px;color:#6f87a8;margin-bottom:4px}
+.tron-parecer-txt p{margin:0;font-size:12.5px;color:#cbd8ea;line-height:1.55;white-space:pre-wrap}
 .tron-ag{display:inline-flex;align-items:center;gap:6px;background:rgba(120,180,255,.07);border:1px solid rgba(120,180,255,.2);
   color:#8ba0bd;border-radius:99px;padding:7px 13px;font-size:11.5px;font-weight:800;letter-spacing:.8px;
   font-family:ui-monospace,monospace;cursor:pointer}
