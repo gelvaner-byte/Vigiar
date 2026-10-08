@@ -173,16 +173,16 @@ const AGENTES = {
       "Que palavras-chave usar para câmera em BH?",
       "Como separo campanha de serviço e de produto?",
     ],
-    abertura: "Sou o agente de TRÁFEGO. Google, Meta e Mercado Ads. Ainda não estou conectado às suas contas de anúncio, então trabalho com os números do app e com os relatórios que você me passar.",
+    abertura: "Sou o agente de TRÁFEGO. Google, Meta e Mercado Ads. Vejo suas vendas do Mercado Livre e os números do app; das contas de anúncio ainda não, então me passe o relatório que eu analiso.",
   },
   mercadolivre: {
     nome: "MERCADO LIVRE", icone: <ShoppingCart size={14} />, papel: "venda de produto",
     sugestoes: [
-      "Com custo de 120 reais, por quanto vendo para ter 35% de margem?",
-      "Como melhorar título e foto de um anúncio?",
-      "Vale montar kit de câmera com DVR?",
+      "Quais anúncios estão abaixo da minha meta de margem?",
+      "O que está parado no estoque e o que eu faço?",
+      "Tenho pergunta sem responder?",
     ],
-    abertura: "Sou o agente de MERCADO LIVRE. Sua conta ainda não está conectada, então não vejo anúncio nem venda de verdade. Me passe os números que eu calculo margem, preço e o que mexer no anúncio.",
+    abertura: "Sou o agente de MERCADO LIVRE. Vejo seus anúncios, estoque, vendas dos últimos 30 dias, reputação e perguntas sem resposta — tudo real, só leitura. Onde você cadastrou o custo de compra, eu já sei a margem.",
   },
 };
 
