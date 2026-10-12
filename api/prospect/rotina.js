@@ -8,12 +8,13 @@ import {
 } from './_lib.js'
 import { pesquisarSegmento } from './_pesquisa.js'
 
-// Só a Vercel (ou o dono, pelo painel) dispara a rotina.
+// Pesquisar custa dinheiro, então este endereço não fica aberto para a internet.
+// Passa quem traz o CRON_SECRET, ou o próprio agendador da Vercel.
 function autorizado(req) {
   const segredo = process.env.CRON_SECRET
-  if (!segredo) return true   // sem segredo configurado, a Vercel ainda assim só expõe pelo cron
-  const auth = req.headers.authorization || ''
-  return auth === `Bearer ${segredo}`
+  if (segredo && (req.headers.authorization || '') === `Bearer ${segredo}`) return true
+  const daVercel = req.headers['x-vercel-cron'] || /vercel-cron/i.test(req.headers['user-agent'] || '')
+  return !segredo && !!daVercel
 }
 
 // Uma ficha só entra se tiver o mínimo para alguém trabalhar nela.
