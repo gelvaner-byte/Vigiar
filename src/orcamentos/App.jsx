@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import Comando from "./Comando.jsx";
+import { moverProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
   assinarMudancas, lerCache, gravarCache,
@@ -597,6 +598,20 @@ function App() {
       return { ok: true, mensagem: `Guardado no Cérebro: ${m.titulo}.` };
     }
     if (nome.startsWith("ml_")) return alterarNoML(nome, e);
+    if (nome === "prospect_pesquisar_agora") {
+      const r = await pesquisarProspect(e.pedido || "", e.segmentos);
+      const rel = r.relatorio || {};
+      return {
+        ok: true, relatorio: rel,
+        novos: (r.novos || []).map((l) => ({ id: l.id, nome: l.nome, cidade: l.cidade, pontuacao: l.pontuacao, servico: l.servicoRecomendado })),
+        mensagem: rel.recado || "Pesquisa concluída.",
+      };
+    }
+    if (nome === "prospect_mover_funil") {
+      if (!e.leadId) throw new Error("Falta dizer qual cliente da prospecção.");
+      const r = await moverProspect(e.leadId, e.estagio, e.anotacao);
+      return { ok: true, mensagem: `${r.lead?.nome || "Cliente"} agora está como "${ROTULO_ESTAGIO_PROSPECT[r.lead?.estagio] || r.lead?.estagio}".` };
+    }
     throw new Error("Ação desconhecida: " + nome);
   };
 

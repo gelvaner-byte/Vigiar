@@ -4,6 +4,14 @@
     {
       "path": "/api/keepalive",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/prospect/rotina",
+      "schedule": "0 12 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/prospect/rotina.js": { "maxDuration": 300 },
+    "api/prospect/pesquisar.js": { "maxDuration": 300 }
+  }
 }

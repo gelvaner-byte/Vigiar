@@ -181,12 +181,51 @@ const CONSULTAR = {
   },
 }
 
+// Prospecção. Nenhuma destas ferramentas fala com cliente: a de pesquisa procura na web,
+// a do funil só anota o que o Gelvan já fez por fora.
+const FERRAMENTAS_PROSPECT = [
+  {
+    name: 'prospect_pesquisar_agora',
+    description: 'Dispara uma pesquisa de novos clientes agora, sem esperar a rotina da manhã. Demora cerca de um minuto e consome busca na web, então use quando o Gelvan pedir algo específico que ainda não está na base.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        pedido: { type: 'string', description: 'O que procurar, em uma frase. Ex.: administradoras de condomínio em Nova Lima' },
+        segmentos: {
+          type: 'array',
+          items: { type: 'string', enum: ['administradora', 'condominio', 'comercio', 'industria', 'construtora'] },
+        },
+      },
+      required: ['pedido'],
+    },
+  },
+  {
+    name: 'prospect_mover_funil',
+    description: 'Anota em que pé está um cliente da prospecção. Só registra o que o Gelvan já fez por fora — não entra em contato com ninguém.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        leadId: { type: 'string' },
+        estagio: {
+          type: 'string',
+          enum: ['identificado', 'pesquisa_concluida', 'qualificado', 'aguardando_contato', 'contato_realizado',
+            'aguardando_resposta', 'interessado', 'visita_agendada', 'orcamento_em_elaboracao', 'proposta_enviada',
+            'negociacao', 'contrato_fechado', 'perdido'],
+        },
+        anotacao: { type: 'string', description: 'O que aconteceu, nas palavras do Gelvan' },
+      },
+      required: ['leadId'],
+    },
+  },
+]
+
 // O TRON tem tudo. O especialista de Mercado Livre executa na loja dele, mas não mexe no app.
 // Os outros especialistas só analisam (e podem guardar o que aprenderam no Cérebro).
 const ferramentasDe = (agente) => {
-  if (agente === 'tron') return [...FERRAMENTAS, ...FERRAMENTAS_ML, CONSULTAR]
+  if (agente === 'tron') return [...FERRAMENTAS, ...FERRAMENTAS_ML, ...FERRAMENTAS_PROSPECT, CONSULTAR]
   const memoria = FERRAMENTAS.filter((f) => f.name === 'salvar_memoria')
   if (agente === 'mercadolivre') return [...FERRAMENTAS_ML, ...memoria]
+  if (agente === 'prospect') return [...FERRAMENTAS_PROSPECT, ...memoria]
   return memoria
 }
 

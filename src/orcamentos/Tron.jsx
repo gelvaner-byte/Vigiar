@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import { margemDoItem } from "./MercadoLivre.jsx";
+import { contextoProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
 
 /* ============ TRON — assistente do Centro de Comando ============ */
 
@@ -107,6 +108,8 @@ const ROTULO_ACAO = {
   ml_pausar_anuncio: "Pausar anúncio",
   ml_ativar_anuncio: "Reativar anúncio",
   ml_responder_pergunta: "Responder cliente no Mercado Livre",
+  prospect_pesquisar_agora: "Pesquisar clientes novos agora",
+  prospect_mover_funil: "Anotar situação do cliente",
 };
 // As que saem da Vigiar e aparecem para o cliente lá fora: card em vermelho.
 const ACAO_EXTERNA = new Set(Object.keys(ROTULO_ACAO).filter((k) => k.startsWith("ml_")));
@@ -135,6 +138,12 @@ function Acao({ bloco, clientes, anuncios = [], onConfirmar, onRecusar, estado }
     }
     if (e.motivo) linhas.push(["Por quê", e.motivo]);
     if (e.forcar) linhas.push(["Atenção", "Ignorando a trava de segurança"]);
+  } else if (bloco.name === "prospect_pesquisar_agora") {
+    linhas.push(["Procurar", e.pedido], ["Segmentos", (e.segmentos || []).join(", ")],
+      ["Demora", "cerca de um minuto"]);
+  } else if (bloco.name === "prospect_mover_funil") {
+    linhas.push(["Cliente", e.leadId], ["Nova situação", ROTULO_ESTAGIO_PROSPECT[e.estagio] || e.estagio],
+      ["Anotação", e.anotacao]);
   } else if (bloco.name === "criar_cliente") {
     linhas.push(["Nome", e.nome], ["Telefone", e.telefone], ["Endereço", [e.endereco, e.bairro].filter(Boolean).join(" - ")], ["Origem", e.origem]);
   } else if (bloco.name === "criar_orcamento") {
@@ -214,6 +223,15 @@ const AGENTES = {
     ],
     abertura: "Sou o agente de MERCADO LIVRE. Vejo seus anúncios, estoque, vendas dos últimos 30 dias, reputação e perguntas sem resposta — tudo real, só leitura. Onde você cadastrou o custo de compra, eu já sei a margem.",
   },
+  prospect: {
+    nome: "PROSPECT", icone: <Target size={14} />, papel: "clientes novos",
+    sugestoes: [
+      "Quem eu procuro hoje?",
+      "Procure administradoras de condomínio em Nova Lima",
+      "Quais têm cara de contrato mensal?",
+    ],
+    abertura: "Sou o TRON PROSPECT. Procuro cliente novo em Belo Horizonte, Lagoa Santa e Nova Lima, e deixo a abordagem pronta. Eu não falo com ninguém: escrevo a mensagem, você envia.",
+  },
 };
 
 // O que o agente de Mercado Livre precisa saber, com a margem já calculada por anúncio.
@@ -247,7 +265,7 @@ function contextoML(ml, custos, metaMargem) {
   };
 }
 
-export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
+export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, prospect, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [conversa, setConversa] = useState([]); // formato da API: {role, content}
   const [texto, setTexto] = useState("");
@@ -273,13 +291,20 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
     () => {
       const base = montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje });
       // O TRON precisa dos dois, porque delega; cada especialista recebe o que usa.
-      if (agente === "tron") return { ...base, financeiro: financeiro || null, mercadoLivre: contextoML(mercadoLivre, custosML, metaMargem) };
+      if (agente === "tron") {
+        return {
+          ...base, financeiro: financeiro || null,
+          mercadoLivre: contextoML(mercadoLivre, custosML, metaMargem),
+          prospeccao: contextoProspect(prospect),
+        };
+      }
       if (agente === "financeiro") return { ...base, financeiro: financeiro || null };
       if (agente === "mercadolivre") return { ...base, mercadoLivre: contextoML(mercadoLivre, custosML, metaMargem) };
       if (agente === "trafego") return { ...base, mercadoLivre: contextoML(mercadoLivre, custosML, metaMargem) };
+      if (agente === "prospect") return { ...base, prospeccao: contextoProspect(prospect) };
       return base;
     },
-    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro, mercadoLivre, custosML, metaMargem],
+    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro, mercadoLivre, prospect, custosML, metaMargem],
   );
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [conversa, pensando]);

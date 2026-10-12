@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   ShieldCheck, X, Lock, TrendingUp, FileText, Wrench, Users, Package,
-  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain, ShoppingCart,
+  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain, ShoppingCart, Target,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import TronChat from "./Tron.jsx";
@@ -9,6 +9,7 @@ import CerebroPainel from "./Cerebro.jsx";
 import { carregarFinanceiro, resumoFinanceiro } from "./financeiro";
 import { conferir, montarConfig } from "./senhaComando";
 import PainelML, { buscarDadosML, margemDoItem } from "./MercadoLivre.jsx";
+import PainelProspect, { buscarProspect, moverProspect, pesquisarProspect } from "./Prospect.jsx";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -171,12 +172,21 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
   const [financeiro, setFinanceiro] = useState(null); // dados do app de gestão financeira
   const [ml, setMl] = useState(null);                 // dados reais da conta do Mercado Livre
   const [lendoMl, setLendoMl] = useState(false);
+  const [prospect, setProspect] = useState(null);     // base de prospecção do TRON PROSPECT
+  const [lendoProspect, setLendoProspect] = useState(false);
 
   const atualizarMl = async () => {
     setLendoMl(true);
     try { setMl(await buscarDadosML()); }
     catch (e) { setMl({ conectado: false, configurado: true, erro: String(e.message || e) }); }
     finally { setLendoMl(false); }
+  };
+
+  const atualizarProspect = async () => {
+    setLendoProspect(true);
+    try { setProspect(await buscarProspect()); }
+    catch (e) { onToast && onToast("Prospecção: " + String(e.message || e)); }
+    finally { setLendoProspect(false); }
   };
   const hoje = new Date().toISOString().slice(0, 10);
   const mes = hoje.slice(0, 7);
@@ -255,6 +265,8 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
     { id: "geral", nome: "VISÃO GERAL", icon: <Activity size={14} />, badge: alertas || null, urgente: alertas > 0 },
     { id: "tron", nome: "TRON", icon: <Bot size={14} /> },
     { id: "ml", nome: "MERCADO LIVRE", icon: <ShoppingCart size={14} />, badge: ml?.anuncios?.ativos || null },
+    { id: "prospect", nome: "PROSPECÇÃO", icon: <Target size={14} />,
+      badge: (prospect?.leads || []).filter((l) => ["pesquisa_concluida", "qualificado", "aguardando_contato"].includes(l.estagio)).length || null },
     { id: "cerebro", nome: "CÉREBRO", icon: <Brain size={14} />, badge: cerebro.length || null },
     { id: "agentes", nome: "AGENTES", icon: <Radio size={14} /> },
   ];
@@ -296,10 +308,11 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
       ) : !liberado ? (
         <Tranca email={email} cfgSenha={cfgSenha} onDefinirSenha={onDefinirSenha} onLiberado={async () => {
           setLiberado(true);
-          // Só busca o financeiro e o Mercado Livre depois da senha conferida.
+          // Só busca financeiro, Mercado Livre e prospecção depois da senha conferida.
           try { setFinanceiro(resumoFinanceiro(await carregarFinanceiro(), hoje)); }
           catch (e) { console.error(e); }
           atualizarMl();
+          atualizarProspect();
         }} onFechar={onFechar} />
       ) : (
         <>
@@ -429,6 +442,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               cerebro={cerebro}
               financeiro={financeiro}
               mercadoLivre={ml}
+              prospect={prospect}
               custosML={custosML}
               metaMargem={metaMargem}
               vendedoras={vendedoras}
@@ -447,6 +461,26 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               custos={custosML}
               onSalvarCusto={onSalvarCustoML}
               metaMargem={metaMargem}
+              onToast={onToast}
+            />
+          </Painel>
+        )}
+
+        {aba === "prospect" && (
+          <Painel icon={<Target size={14} />} titulo="TRON PROSPECT · central de prospecção" className="cmd-cheio">
+            <PainelProspect
+              dados={prospect}
+              carregando={lendoProspect}
+              onAtualizar={atualizarProspect}
+              onPesquisar={async (pedido) => {
+                const r = await pesquisarProspect(pedido);
+                await atualizarProspect();
+                return r;
+              }}
+              onMover={async (leadId, estagio, anotacao) => {
+                await moverProspect(leadId, estagio, anotacao);
+                await atualizarProspect();
+              }}
               onToast={onToast}
             />
           </Painel>
