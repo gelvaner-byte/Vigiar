@@ -6,7 +6,7 @@ import {
 import { supabase } from "./supabaseOrc";
 import { margemDoItem } from "./MercadoLivre.jsx";
 import { contextoProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
-import { politicasParaAgentes } from "./politicas.js";
+import { memoriasDasPoliticas, politicasParaAgentes } from "./politicas.js";
 
 /* ============ TRON — assistente do Centro de Comando ============ */
 
@@ -291,8 +291,12 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
   const contexto = useMemo(
     () => {
       // As políticas vão para TODOS os agentes: ninguém pode responder uma regra diferente.
+      // O Cérebro que o agente lê já inclui as políticas, igual ao que o Gelvan vê na tela.
       const base = {
-        ...montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje }),
+        ...montarContexto({
+          clientes, orcamentos, ordens, vendedoras, hoje,
+          cerebro: [...memoriasDasPoliticas(politicas), ...cerebro],
+        }),
         politicasDaEmpresa: politicas ? politicasParaAgentes(politicas) : null,
       };
       // O TRON precisa dos dois, porque delega; cada especialista recebe o que usa.

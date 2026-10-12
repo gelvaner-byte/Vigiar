@@ -11,7 +11,7 @@ import { conferir, montarConfig } from "./senhaComando";
 import PainelML, { buscarDadosML, margemDoItem } from "./MercadoLivre.jsx";
 import PainelProspect, { buscarProspect, moverProspect, pesquisarProspect } from "./Prospect.jsx";
 import PainelPoliticas from "./Politicas.jsx";
-import { situacaoDaValidade } from "./politicas.js";
+import { memoriasDasPoliticas, situacaoDaValidade } from "./politicas.js";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -273,7 +273,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
     { id: "ml", nome: "MERCADO LIVRE", icon: <ShoppingCart size={14} />, badge: ml?.anuncios?.ativos || null },
     { id: "prospect", nome: "PROSPECÇÃO", icon: <Target size={14} />,
       badge: (prospect?.leads || []).filter((l) => ["pesquisa_concluida", "qualificado", "aguardando_contato"].includes(l.estagio)).length || null },
-    { id: "cerebro", nome: "CÉREBRO", icon: <Brain size={14} />, badge: cerebro.length || null },
+    { id: "cerebro", nome: "CÉREBRO", icon: <Brain size={14} />, badge: cerebro.length + memoriasDasPoliticas(politicas).length },
     { id: "agentes", nome: "AGENTES", icon: <Radio size={14} /> },
     { id: "politicas", nome: "POLÍTICAS", icon: <ScrollText size={14} /> },
   ];
@@ -497,9 +497,10 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
         )}
 
         {aba === "cerebro" && (
-          <Painel icon={<Brain size={14} />} titulo={`Cérebro · ${cerebro.length} memória${cerebro.length === 1 ? "" : "s"}`} className="cmd-cheio">
+          <Painel icon={<Brain size={14} />} titulo={`Cérebro · ${cerebro.length + memoriasDasPoliticas(politicas).length} memórias`} className="cmd-cheio">
             <CerebroPainel
               memorias={cerebro}
+              politicas={politicas}
               onSalvar={onSalvarMemoria}
               onExcluir={onExcluirMemoria}
               onToast={onToast}

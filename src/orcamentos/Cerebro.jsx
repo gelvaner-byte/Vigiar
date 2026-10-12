@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Plus, Trash2, Check, X, Search, Pencil, Sparkles } from "lucide-react";
+import { ehMemoriaOficial, memoriasDasPoliticas } from "./politicas.js";
 
 /* ============ CÉREBRO — o que a empresa sabe ============ */
 // Cada memória é um pedaço de conhecimento que o TRON usa em toda resposta:
@@ -118,17 +119,32 @@ function Mapa({ memorias, aoTocar }) {
   );
 }
 
-export default function Cerebro({ memorias, onSalvar, onExcluir, onToast }) {
+export default function Cerebro({ memorias, politicas, onSalvar, onExcluir, onToast }) {
   const [busca, setBusca] = useState("");
   const [rapido, setRapido] = useState("");
   const [edit, setEdit] = useState(null);
   const [verLista, setVerLista] = useState(false);
 
+  // As políticas da empresa ficam aqui dentro junto com o resto do que a casa sabe.
+  // Vêm primeiro porque é o que mais se consulta, e são de leitura: quem muda é a aba POLÍTICAS.
+  const todas = useMemo(
+    () => [...memoriasDasPoliticas(politicas), ...memorias],
+    [memorias, politicas],
+  );
+
   const lista = useMemo(() => {
     const q = busca.trim().toLowerCase();
     if (!q) return [];
-    return memorias.filter((m) => `${m.titulo} ${m.conteudo} ${m.categoria}`.toLowerCase().includes(q));
-  }, [memorias, busca]);
+    return todas.filter((m) => `${m.titulo} ${m.conteudo} ${m.categoria}`.toLowerCase().includes(q));
+  }, [todas, busca]);
+
+  const tocar = (m) => {
+    if (ehMemoriaOficial(m)) {
+      onToast && onToast("Essa é a política oficial da empresa. Para mudar, vá na aba POLÍTICAS.");
+      return;
+    }
+    setEdit({ ...m });
+  };
 
   const abrirNovo = (texto = "") =>
     setEdit({ id: uid(), titulo: texto.slice(0, 60), categoria: "Preços", conteudo: texto, criadoEm: hojeISO() });
@@ -143,17 +159,26 @@ export default function Cerebro({ memorias, onSalvar, onExcluir, onToast }) {
     setRapido("");
   };
 
-  const Item = ({ m }) => (
-    <article className="cer-item" style={{ "--c": COR[m.categoria] || "#94a3b8" }}>
-      <header>
-        <span className="cer-cat">{m.categoria}</span>
-        <strong>{m.titulo}</strong>
-        <button onClick={() => setEdit({ ...m })} aria-label="Editar"><Pencil size={13} /></button>
-        <button onClick={() => onExcluir(m.id)} aria-label="Apagar"><Trash2 size={13} /></button>
-      </header>
-      <p>{m.conteudo}</p>
-    </article>
-  );
+  const Item = ({ m }) => {
+    const oficial = ehMemoriaOficial(m);
+    return (
+      <article className={"cer-item" + (oficial ? " oficial" : "")} style={{ "--c": oficial ? "#ff8c32" : COR[m.categoria] || "#94a3b8" }}>
+        <header>
+          <span className="cer-cat">{m.categoria}</span>
+          <strong>{m.titulo}</strong>
+          {oficial ? (
+            <span className="cer-selo" title="Regra oficial da empresa — muda na aba POLÍTICAS">OFICIAL</span>
+          ) : (
+            <>
+              <button onClick={() => setEdit({ ...m })} aria-label="Editar"><Pencil size={13} /></button>
+              <button onClick={() => onExcluir(m.id)} aria-label="Apagar"><Trash2 size={13} /></button>
+            </>
+          )}
+        </header>
+        <p>{m.conteudo}</p>
+      </article>
+    );
+  };
 
   if (edit) {
     return (
@@ -190,14 +215,14 @@ export default function Cerebro({ memorias, onSalvar, onExcluir, onToast }) {
       <div className="cer-buscar">
         <Search size={13} />
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar nas memórias — título ou trecho…" />
-        {memorias.length > 0 && (
+        {todas.length > 0 && (
           <button className="cer-ver" onClick={() => setVerLista((v) => !v)}>
-            {verLista ? "Ver mapa" : `Ver as ${memorias.length}`}
+            {verLista ? "Ver mapa" : `Ver as ${todas.length}`}
           </button>
         )}
       </div>
 
-      {memorias.length === 0 ? (
+      {todas.length === 0 ? (
         <p className="cer-vazio">
           O Cérebro está vazio. Ensine o que a Vigiar sabe — preço de câmera, prazo de garantia,
           fornecedor de cabo, como você fala com cliente. O TRON passa a usar isso em toda resposta.
@@ -209,10 +234,10 @@ export default function Cerebro({ memorias, onSalvar, onExcluir, onToast }) {
         </div>
       ) : verLista ? (
         <div className="cer-lista">
-          {[...memorias].sort((a, b) => String(a.categoria).localeCompare(String(b.categoria))).map((m) => <Item key={m.id} m={m} />)}
+          {[...todas].sort((a, b) => String(a.categoria).localeCompare(String(b.categoria))).map((m) => <Item key={m.id} m={m} />)}
         </div>
       ) : (
-        <Mapa memorias={memorias} aoTocar={(m) => setEdit({ ...m })} />
+        <Mapa memorias={todas} aoTocar={tocar} />
       )}
 
       <Estilo />
@@ -252,6 +277,9 @@ function Estilo() {
 .cer-item header{display:flex;align-items:center;gap:8px;margin-bottom:5px}
 .cer-item header strong{flex:1;font-size:13.5px;color:#fff;min-width:0}
 .cer-item header button{background:none;border:none;color:#6f87a8;cursor:pointer;padding:2px}
+.cer-item.oficial{border-color:rgba(255,140,50,.45);background:rgba(255,140,50,.06)}
+.cer-selo{margin-left:auto;flex-shrink:0;font-size:8.5px;font-weight:800;letter-spacing:1px;color:#ff9a45;
+  border:1px solid rgba(255,140,50,.45);border-radius:99px;padding:3px 8px}
 .cer-cat{font-size:9.5px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:var(--c);
   background:rgba(255,255,255,.05);border-radius:99px;padding:3px 8px;white-space:nowrap}
 .cer-item p{margin:0;font-size:12.5px;color:#b9cbe4;line-height:1.5;white-space:pre-wrap}

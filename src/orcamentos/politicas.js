@@ -105,6 +105,43 @@ export function fimDaGarantia(doc, pol) {
   return p.dias ? somarDias(inicio, p.dias) : somarDias(inicio, p.meses * 30.44);
 }
 
+/* ===== as políticas dentro do Cérebro ===== */
+
+// O Cérebro é onde o Gelvan procura o que a empresa sabe, então as políticas aparecem lá
+// junto com as memórias. São só de leitura: quem manda é a aba POLÍTICAS, para não existirem
+// duas versões da mesma regra.
+export function memoriasDasPoliticas(pol) {
+  if (!pol) return [];
+  const g = prazoGarantia("comProduto", pol);
+  const s = prazoGarantia("soMaoDeObra", pol);
+  const em = pol.atualizadoEm ? pol.atualizadoEm.slice(0, 10) : "";
+  const base = { categoria: "Regras da casa", oficial: true, criadoEm: em, atualizadoEm: em };
+  return [
+    {
+      ...base, id: "pol-validade", titulo: "Validade do orçamento",
+      conteudo: `Todo orçamento vale ${pol.validadeDias} dias corridos, contados do dia em que foi enviado ao cliente. Enquanto não foi enviado, conta da data em que foi criado. Orçamento já emitido mantém a validade que valia no dia dele.`,
+    },
+    {
+      ...base, id: "pol-garantia-produto", titulo: "Garantia com produto nosso",
+      conteudo: `Quando a Vigiar fornece o equipamento e faz a instalação, a garantia é de ${g.texto}. ${pol.observacao}`,
+    },
+    {
+      ...base, id: "pol-garantia-servico", titulo: "Garantia de serviço",
+      conteudo: `Quando é só mão de obra, sem produto nosso, a garantia é de ${s.texto}. ${pol.observacao}`,
+    },
+    {
+      ...base, id: "pol-cobertura", titulo: "O que a garantia cobre",
+      conteudo: pol.cobertura.join("\n"),
+    },
+    {
+      ...base, id: "pol-exclusoes", titulo: "O que a garantia não cobre",
+      conteudo: pol.exclusoes.join("\n"),
+    },
+  ];
+}
+
+export const ehMemoriaOficial = (m) => String(m?.id || "").startsWith("pol-");
+
 /* ===== o que os agentes leem ===== */
 
 // Vai inteiro para o TRON e para todos os especialistas, para ninguém responder diferente.
