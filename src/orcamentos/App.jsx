@@ -508,6 +508,31 @@ function App() {
     setToast("Memória apagada.");
   };
 
+  // Alterações na loja do Mercado Livre. O servidor confere de novo antes de aplicar:
+  // preço no prejuízo, variação acima de 40% e anúncio de outra conta são recusados lá.
+  const alterarNoML = async (nome, e) => {
+    const mapa = {
+      ml_alterar_preco: { acao: "preco", valor: e.preco },
+      ml_alterar_estoque: { acao: "estoque", valor: e.estoque },
+      ml_alterar_titulo: { acao: "titulo", texto: e.titulo },
+      ml_pausar_anuncio: { acao: "pausar" },
+      ml_ativar_anuncio: { acao: "ativar" },
+      ml_responder_pergunta: { acao: "responder_pergunta", perguntaId: e.perguntaId, texto: e.resposta },
+    };
+    const corpo = mapa[nome];
+    if (!corpo) throw new Error("Alteração desconhecida: " + nome);
+
+    const { data } = await supabase.auth.getSession();
+    const r = await fetch("/api/ml/alterar", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${data.session?.access_token}` },
+      body: JSON.stringify({ itemId: e.itemId, forcar: !!e.forcar, ...corpo }),
+    });
+    const resposta = await r.json();
+    if (!r.ok) throw new Error(resposta.erro || "O Mercado Livre não aceitou a alteração.");
+    return resposta;
+  };
+
   // Ações que o TRON pode executar — só rodam depois do dono confirmar na tela.
   const acoesTron = async (nome, e) => {
     const achaCliente = (id) => clientes.find((c) => c.id === id);
@@ -571,6 +596,7 @@ function App() {
       updCerebro([...cerebro, m]);
       return { ok: true, mensagem: `Guardado no Cérebro: ${m.titulo}.` };
     }
+    if (nome.startsWith("ml_")) return alterarNoML(nome, e);
     throw new Error("Ação desconhecida: " + nome);
   };
 

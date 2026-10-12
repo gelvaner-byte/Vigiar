@@ -101,13 +101,41 @@ const ROTULO_ACAO = {
   agendar_servico: "Agendar serviço (criar OS)",
   mudar_status_orcamento: "Mudar situação do orçamento",
   salvar_memoria: "Guardar no Cérebro",
+  ml_alterar_preco: "Mudar preço no Mercado Livre",
+  ml_alterar_estoque: "Mudar estoque no Mercado Livre",
+  ml_alterar_titulo: "Mudar título do anúncio",
+  ml_pausar_anuncio: "Pausar anúncio",
+  ml_ativar_anuncio: "Reativar anúncio",
+  ml_responder_pergunta: "Responder cliente no Mercado Livre",
 };
+// As que saem da Vigiar e aparecem para o cliente lá fora: card em vermelho.
+const ACAO_EXTERNA = new Set(Object.keys(ROTULO_ACAO).filter((k) => k.startsWith("ml_")));
 
-function Acao({ bloco, clientes, onConfirmar, onRecusar, estado }) {
+function Acao({ bloco, clientes, anuncios = [], onConfirmar, onRecusar, estado }) {
   const e = bloco.input || {};
   const nomeCliente = (id) => (clientes.find((c) => c.id === id) || {}).nome || id || "—";
+  const anuncio = (id) => anuncios.find((a) => a.id === id) || null;
   const linhas = [];
-  if (bloco.name === "criar_cliente") {
+  if (bloco.name.startsWith("ml_")) {
+    const a = anuncio(e.itemId);
+    if (a) linhas.push(["Anúncio", a.titulo]);
+    else if (e.itemId) linhas.push(["Anúncio", e.itemId]);
+    if (bloco.name === "ml_alterar_preco") {
+      linhas.push(["Preço agora", a ? brl(a.preco) : "—"], ["Vai para", brl(e.preco)]);
+      if (a?.preco) {
+        const dif = ((e.preco - a.preco) / a.preco) * 100;
+        linhas.push(["Variação", `${dif > 0 ? "+" : ""}${dif.toFixed(1)}%`]);
+      }
+    } else if (bloco.name === "ml_alterar_estoque") {
+      linhas.push(["Estoque agora", a ? String(a.estoque) : "—"], ["Vai para", String(e.estoque)]);
+    } else if (bloco.name === "ml_alterar_titulo") {
+      linhas.push(["Título agora", a ? a.titulo : "—"], ["Vai para", e.titulo], ["Tamanho", `${String(e.titulo || "").length}/60`]);
+    } else if (bloco.name === "ml_responder_pergunta") {
+      linhas.push(["Resposta", e.resposta]);
+    }
+    if (e.motivo) linhas.push(["Por quê", e.motivo]);
+    if (e.forcar) linhas.push(["Atenção", "Ignorando a trava de segurança"]);
+  } else if (bloco.name === "criar_cliente") {
     linhas.push(["Nome", e.nome], ["Telefone", e.telefone], ["Endereço", [e.endereco, e.bairro].filter(Boolean).join(" - ")], ["Origem", e.origem]);
   } else if (bloco.name === "criar_orcamento") {
     linhas.push(["Cliente", nomeCliente(e.clienteId)], ["Visita", `${e.dataVisita || ""} ${e.horaVisita || ""}`], ["O que quer", e.descricaoServico], ["Vendedor", e.vendedor]);
@@ -118,9 +146,11 @@ function Acao({ bloco, clientes, onConfirmar, onRecusar, estado }) {
     linhas.push(["Orçamento", e.orcamentoId], ["Nova situação", e.status], ["Motivo", e.motivo]);
   }
 
+  const externa = ACAO_EXTERNA.has(bloco.name);
   return (
-    <div className={"tron-acao" + (estado ? ` ${estado}` : "")}>
+    <div className={"tron-acao" + (externa ? " externa" : "") + (estado ? ` ${estado}` : "")}>
       <header><AlertTriangle size={14} /> {ROTULO_ACAO[bloco.name] || bloco.name}</header>
+      {externa && <p className="tron-fora">Isto muda a sua loja no Mercado Livre na hora, à vista de quem está comprando.</p>}
       <dl>
         {linhas.filter(([, v]) => v).map(([k, v]) => (
           <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
@@ -402,7 +432,8 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
             }
             if (b.type === "tool_use") {
               return (
-                <Acao key={b.id} bloco={b} clientes={clientes} estado={estados[b.id]}
+                <Acao key={b.id} bloco={b} clientes={clientes} anuncios={mercadoLivre?.anuncios?.lista || []}
+                  estado={estados[b.id]}
                   onConfirmar={() => confirmar(b)} onRecusar={() => recusar(b)} />
               );
             }
@@ -473,6 +504,10 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
 .tron-acao-btns{display:flex;gap:8px;margin-top:11px}
 .tron-acao-btns button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;
   border-radius:9px;padding:9px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer}
+.tron-acao.externa{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.5)}
+.tron-acao.externa header{color:#ff8f8f}
+.tron-fora{margin:7px 0 10px;font-size:11.5px;line-height:1.45;color:#ff8f8f}
+.tron-acao.externa .tron-acao-btns .sim{background:#ff6b6b;color:#2a0505}
 .tron-acao-btns .sim{background:#22d39a;color:#04261a}
 .tron-acao-btns .nao{background:rgba(120,180,255,.1);color:#b9cbe4;border:1px solid rgba(120,180,255,.22)}
 .tron-feito{margin:10px 0 0;color:#22d39a;font-weight:700;font-size:12.5px}

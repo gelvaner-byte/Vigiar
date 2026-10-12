@@ -91,6 +91,81 @@ const FERRAMENTAS = [
   },
 ]
 
+// Mexer no Mercado Livre de verdade. Toda alteração passa pela confirmação do Gelvan na tela,
+// e o servidor ainda confere sozinho (prejuízo, variação grande, dono do anúncio).
+const FERRAMENTAS_ML = [
+  {
+    name: 'ml_alterar_preco',
+    description: 'Troca o preço de um anúncio do Mercado Livre. Diga sempre o preço atual, o novo e a margem que sobra. Mudança acima de 40% ou preço que dá prejuízo só passa com forcar=true, e só peça isso depois de avisar o Gelvan do risco.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: 'id do anúncio, ex.: MLB1234567890' },
+        preco: { type: 'number', description: 'novo preço em reais' },
+        motivo: { type: 'string', description: 'por que esse preço' },
+        forcar: { type: 'boolean', description: 'só true quando o Gelvan já foi avisado do risco e insistiu' },
+      },
+      required: ['itemId', 'preco'],
+    },
+  },
+  {
+    name: 'ml_alterar_estoque',
+    description: 'Ajusta a quantidade disponível de um anúncio do Mercado Livre.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        estoque: { type: 'number', description: 'quantidade disponível, número inteiro' },
+        motivo: { type: 'string' },
+      },
+      required: ['itemId', 'estoque'],
+    },
+  },
+  {
+    name: 'ml_alterar_titulo',
+    description: 'Reescreve o título de um anúncio. Máximo 60 caracteres. Use as palavras que o cliente busca, sem repetir e sem promessa falsa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string' },
+        titulo: { type: 'string', description: 'novo título, até 60 caracteres' },
+        motivo: { type: 'string' },
+      },
+      required: ['itemId', 'titulo'],
+    },
+  },
+  {
+    name: 'ml_pausar_anuncio',
+    description: 'Pausa um anúncio: ele sai do ar e para de vender, mas não é apagado.',
+    input_schema: {
+      type: 'object',
+      properties: { itemId: { type: 'string' }, motivo: { type: 'string' } },
+      required: ['itemId'],
+    },
+  },
+  {
+    name: 'ml_ativar_anuncio',
+    description: 'Reativa um anúncio pausado. Precisa ter estoque.',
+    input_schema: {
+      type: 'object',
+      properties: { itemId: { type: 'string' }, motivo: { type: 'string' } },
+      required: ['itemId'],
+    },
+  },
+  {
+    name: 'ml_responder_pergunta',
+    description: 'Responde uma pergunta de cliente no anúncio. Escreva como a Vigiar escreve: curto, educado e direto, sem telefone nem link, que o Mercado Livre bloqueia.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        perguntaId: { type: 'string', description: 'id da pergunta' },
+        resposta: { type: 'string' },
+      },
+      required: ['perguntaId', 'resposta'],
+    },
+  },
+]
+
 
 // Ferramenta que só o TRON tem: pedir a análise de um especialista.
 const CONSULTAR = {
@@ -106,10 +181,14 @@ const CONSULTAR = {
   },
 }
 
-const ferramentasDe = (agente) =>
-  agente === 'tron'
-    ? [...FERRAMENTAS, CONSULTAR]
-    : FERRAMENTAS.filter((f) => f.name === 'salvar_memoria')
+// O TRON tem tudo. O especialista de Mercado Livre executa na loja dele, mas não mexe no app.
+// Os outros especialistas só analisam (e podem guardar o que aprenderam no Cérebro).
+const ferramentasDe = (agente) => {
+  if (agente === 'tron') return [...FERRAMENTAS, ...FERRAMENTAS_ML, CONSULTAR]
+  const memoria = FERRAMENTAS.filter((f) => f.name === 'salvar_memoria')
+  if (agente === 'mercadolivre') return [...FERRAMENTAS_ML, ...memoria]
+  return memoria
+}
 
 // Confere se quem chamou está logado no app e é dono.
 async function donoAutenticado(req) {
