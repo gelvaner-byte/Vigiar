@@ -220,7 +220,8 @@ export async function chamarModelo({ sistema, mensagens, ferramentas, maxTokens 
 export const FERRAMENTA_BUSCA = [{
   type: 'web_search_20260209',
   name: 'web_search',
-  max_uses: Number(process.env.PROSPECT_MAX_BUSCAS || 12),
+  // Cada busca custa tempo, e a função da Vercel tem relógio. Oito dá fôlego sem estourar.
+  max_uses: Number(process.env.PROSPECT_MAX_BUSCAS || 8),
   user_location: { type: 'approximate', country: 'BR', region: 'Minas Gerais', city: 'Belo Horizonte', timezone: 'America/Sao_Paulo' },
 }]
 

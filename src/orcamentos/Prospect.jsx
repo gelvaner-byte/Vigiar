@@ -33,25 +33,38 @@ const ROTULO_EQUIP = {
 };
 const COR_PRIORIDADE = { alta: "#22d39a", media: "#ff9a45", acompanhar: "#78a8e0", baixa: "#6f87a8" };
 
-async function comToken(caminho, opcoes = {}) {
+async function comToken(caminho, opcoes = {}, segundos = 40) {
   const { data } = await supabase.auth.getSession();
-  const r = await fetch(caminho, {
-    ...opcoes,
-    headers: {
-      "content-type": "application/json",
-      Authorization: `Bearer ${data.session?.access_token}`,
-      ...(opcoes.headers || {}),
-    },
-  });
-  const corpo = await r.json();
-  if (!r.ok) throw new Error(corpo.erro || "Deu erro na prospecção.");
+  // Sem isto, uma função que morre no servidor deixa o botão girando para sempre.
+  const corte = new AbortController();
+  const relogio = setTimeout(() => corte.abort(), segundos * 1000);
+  let r;
+  try {
+    r = await fetch(caminho, {
+      ...opcoes,
+      signal: corte.signal,
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${data.session?.access_token}`,
+        ...(opcoes.headers || {}),
+      },
+    });
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error("A pesquisa demorou demais e foi interrompida. Tente um pedido mais específico.");
+    throw e;
+  } finally {
+    clearTimeout(relogio);
+  }
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(corpo.erro || `A pesquisa falhou (${r.status}). Tente de novo em instantes.`);
   return corpo;
 }
 
 export const buscarProspect = () => comToken("/api/prospect/dados");
 
+// Pesquisa é a chamada demorada do sistema: dou quase cinco minutos antes de desistir.
 export const pesquisarProspect = (pedido, segmentos) =>
-  comToken("/api/prospect/pesquisar", { method: "POST", body: JSON.stringify({ pedido, segmentos }) });
+  comToken("/api/prospect/pesquisar", { method: "POST", body: JSON.stringify({ pedido, segmentos }) }, 290);
 
 export const moverProspect = (leadId, estagio, anotacao) =>
   comToken("/api/prospect/atualizar", { method: "POST", body: JSON.stringify({ leadId, estagio, anotacao }) });
@@ -236,6 +249,7 @@ export default function Prospect({ dados, carregando, onAtualizar, onPesquisar, 
   const [busca, setBusca] = useState("");
   const [pedido, setPedido] = useState("");
   const [pesquisando, setPesquisando] = useState(false);
+  const [erro, setErro] = useState("");
 
   const leads = dados?.leads || [];
   const relatorio = (dados?.relatorios || [])[0] || null;
@@ -255,12 +269,15 @@ export default function Prospect({ dados, carregando, onAtualizar, onPesquisar, 
 
   const pesquisarAgora = async () => {
     setPesquisando(true);
+    setErro("");
     try {
       const r = await onPesquisar(pedido.trim());
       onToast && onToast(r?.relatorio?.recado || "Pesquisa concluída.");
       setPedido("");
     } catch (e) {
-      onToast && onToast("Não deu: " + String(e.message || e));
+      const msg = String(e.message || e);
+      setErro(msg);
+      onToast && onToast("Não deu: " + msg);
     } finally {
       setPesquisando(false);
     }
@@ -321,7 +338,8 @@ export default function Prospect({ dados, carregando, onAtualizar, onPesquisar, 
           <Search size={13} /> {pesquisando ? "Pesquisando…" : "Pesquisar"}
         </button>
       </div>
-      {pesquisando && <p className="pro-dim">Procurando na web. Isso leva cerca de um minuto.</p>}
+      {pesquisando && <p className="pro-dim">Procurando na web, abrindo sites e conferindo. De um a dois minutos — pode deixar a tela aberta.</p>}
+      {erro && <p className="pro-aviso"><AlertTriangle size={13} /> {erro}</p>}
 
       <div className="pro-filtros">
         <input className="pro-busca" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pelo nome…" />

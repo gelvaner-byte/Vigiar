@@ -66,14 +66,18 @@ export async function rodarRotina({ cabecalhos, cfg, userId, pedidoLivre = '', s
   const indice = indiceDeChaves(existentes)
   const nomesConhecidos = existentes.map((l) => `${l.nome} (${l.cidade})`)
 
-  const alvos = segmentos || ['administradora', 'condominio', 'comercio', 'construtora']
+  // Cada rodada é uma ida à web e leva perto de um minuto. O servidor tem tempo contado,
+  // então um pedido do Gelvan é UMA rodada; a rotina da manhã faz algumas, em sequência.
+  const alvos = segmentos || ['administradora', 'condominio', 'comercio']
   const porBusca = quantidadePorBusca || Math.max(3, Math.ceil(cfg.metaDiaria / 2))
 
   // Cada cidade entra em uma rodada diferente para não concentrar tudo em BH.
-  const rodadas = []
-  alvos.forEach((seg, i) => {
-    rodadas.push({ segmento: seg, cidade: cfg.cidades[i % cfg.cidades.length] })
-  })
+  const rodadas = pedidoLivre
+    ? [{ segmento: alvos[0] || 'comercio', cidade: cfg.cidades[0] }]
+    : alvos.map((seg, i) => ({ segmento: seg, cidade: cfg.cidades[i % cfg.cidades.length] }))
+
+  // Para a rotina antes de a função ser cortada no meio: melhor meio relatório do que nenhum.
+  const limiteDeTempo = Date.now() + (Number(process.env.PROSPECT_LIMITE_SEGUNDOS || 240) * 1000)
 
   const novos = []
   const atualizados = []
@@ -82,6 +86,7 @@ export async function rodarRotina({ cabecalhos, cfg, userId, pedidoLivre = '', s
 
   for (const rodada of rodadas) {
     if (novos.length >= cfg.metaDiaria && !pedidoLivre) break
+    if (Date.now() > limiteDeTempo) { falhas.push('Parei por tempo: o resto fica para a próxima rodada.'); break }
     try {
       const r = await pesquisarSegmento({
         ...rodada, quantidade: porBusca, cfg, pedidoLivre,
