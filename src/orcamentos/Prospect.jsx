@@ -26,7 +26,8 @@ const ORDEM_ESTAGIO = Object.keys(ROTULO_ESTAGIO);
 
 const ROTULO_SEGMENTO = {
   administradora: "Administradora", condominio: "Condomínio", comercio: "Comércio",
-  industria: "Indústria", construtora: "Construtora", outro: "Outro",
+  industria: "Indústria", construtora: "Construtora", publico: "Instituição",
+  residencial: "Residencial", outro: "Outro",
 };
 const ROTULO_EQUIP = {
   confirmados: "Confirmados", nao_confirmados: "Não confirmados", nao_identificados: "Não identificados",

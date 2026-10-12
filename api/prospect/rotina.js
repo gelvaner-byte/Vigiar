@@ -6,7 +6,7 @@ import {
   auth, chavesDoLead, donoDoSistema, faixaDe, gravar, hojeBR, idDe, indiceDeChaves,
   jaConhecido, lerColecao, lerConfig, pontuar, dominiosDasFontes,
 } from './_lib.js'
-import { pesquisarSegmento } from './_pesquisa.js'
+import { alvosDoDia, pesquisarSegmento } from './_pesquisa.js'
 
 // Pesquisar custa dinheiro, então este endereço não fica aberto para a internet.
 // Passa quem traz o CRON_SECRET, ou o próprio agendador da Vercel.
@@ -68,7 +68,7 @@ export async function rodarRotina({ cabecalhos, cfg, userId, pedidoLivre = '', s
 
   // Cada rodada é uma ida à web e leva perto de um minuto. O servidor tem tempo contado,
   // então um pedido do Gelvan é UMA rodada; a rotina da manhã faz algumas, em sequência.
-  const alvos = segmentos || ['administradora', 'condominio', 'comercio']
+  const alvos = segmentos || alvosDoDia()
   const porBusca = quantidadePorBusca || Math.max(3, Math.ceil(cfg.metaDiaria / 2))
 
   // Cada cidade entra em uma rodada diferente para não concentrar tudo em BH.

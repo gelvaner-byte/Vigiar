@@ -193,7 +193,7 @@ const FERRAMENTAS_PROSPECT = [
         pedido: { type: 'string', description: 'O que procurar, em uma frase. Ex.: administradoras de condomínio em Nova Lima' },
         segmentos: {
           type: 'array',
-          items: { type: 'string', enum: ['administradora', 'condominio', 'comercio', 'industria', 'construtora'] },
+          items: { type: 'string', enum: ['administradora', 'condominio', 'comercio', 'industria', 'construtora', 'publico', 'residencial'] },
         },
       },
       required: ['pedido'],

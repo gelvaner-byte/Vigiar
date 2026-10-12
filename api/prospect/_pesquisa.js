@@ -33,7 +33,7 @@ FORMATO — devolva SÓ um array JSON, sem texto antes nem depois. Cada item:
 {
   "nome": "nome real como está publicado",
   "razaoSocial": "", "cnpj": "",
-  "segmento": "condominio" | "administradora" | "comercio" | "industria" | "construtora" | "outro",
+  "segmento": "condominio" | "administradora" | "comercio" | "industria" | "construtora" | "publico" | "residencial" | "outro",
   "subsegmento": "ex.: supermercado, clínica, escola particular",
   "cidade": "Belo Horizonte", "bairro": "", "endereco": "", "site": "",
   "telefone": "", "email": "", "whatsapp": "", "paginaContato": "",
@@ -67,9 +67,35 @@ encaminhar a apresentação. Sem link, sem preço, sem promessa.`
 const ALVOS = {
   administradora: 'administradoras de condomínio — quem administra muitos prédios vira contrato recorrente e abre várias portas de uma vez. Prioridade máxima.',
   condominio: 'condomínios residenciais, verticais e horizontais — manutenção de câmera, interfone, portão, controle de acesso, cerca elétrica e alarme.',
-  comercio: 'comércio e serviços: supermercado, farmácia, clínica, escola particular, academia, escritório, loja, restaurante, hotel, estacionamento, galpão, centro comercial.',
-  industria: 'indústria e logística: galpão, transportadora, centro de distribuição.',
-  construtora: 'construtoras e empresas de engenharia com obra em andamento — CFTV, infraestrutura elétrica, controle de acesso, interfonia e automação de portão em empreendimento novo.',
+  comercio: 'comércio e serviços: supermercado, farmácia, clínica, escola particular, academia, escritório, loja, restaurante, hotel, estacionamento, galpão, centro comercial, posto de combustível, oficina, pet shop, padaria.',
+  industria: 'indústria e logística: galpão, transportadora, centro de distribuição, depósito, fábrica, distribuidora.',
+  construtora: 'construtoras e empresas de engenharia com obra em andamento — CFTV, infraestrutura elétrica, controle de acesso, interfonia e automação de portão em empreendimento novo. Inclua também imobiliárias que lançam empreendimento.',
+  publico: 'instituições com porte e rotina de manutenção: igrejas e templos, clubes, associações de bairro, creches, casas de repouso, consultórios, coworkings e prédios comerciais com administração própria.',
+  residencial: `oportunidades em CASA, mas só as que a própria pessoa tornou públicas. O que vale:
+  - pedido de orçamento publicado em grupo, fórum, marketplace, rede social de bairro ou classificado;
+  - reclamação pública de câmera, portão, interfone ou cerca que parou de funcionar;
+  - loteamento e condomínio de casas com associação de moradores (procure a ASSOCIAÇÃO, não o morador);
+  - obra residencial anunciada por quem está construindo.
+  O que NÃO vale, de jeito nenhum: telefone particular de morador, nome de família, endereço de casa
+  que ninguém publicou pedindo serviço, e qualquer detalhe do sistema de segurança de uma residência.
+  Na dúvida, descarte. Em loteamento, a ficha é da associação ou da administradora, nunca do morador.`,
+}
+
+// Cada ida à web leva perto de um minuto, então a rotina não cobre tudo no mesmo dia.
+// Gira os alvos ao longo da semana: administradora e condomínio aparecem mais, porque
+// são os que mais viram contrato de manutenção.
+const CICLO = [
+  ['administradora', 'condominio', 'comercio'],
+  ['condominio', 'comercio', 'construtora'],
+  ['administradora', 'comercio', 'publico'],
+  ['condominio', 'industria', 'comercio'],
+  ['administradora', 'condominio', 'residencial'],
+  ['comercio', 'construtora', 'publico'],
+  ['administradora', 'condominio', 'industria'],
+]
+export const alvosDoDia = (data = new Date()) => {
+  const diaDoAno = Math.floor((data - new Date(data.getFullYear(), 0, 0)) / 86400000)
+  return CICLO[diaDoAno % CICLO.length]
 }
 
 export function sistemaDoProspect(cfg = CONFIG_PADRAO) {
