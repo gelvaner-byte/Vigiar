@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   ShieldCheck, X, Lock, TrendingUp, FileText, Wrench, Users, Package,
-  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain, ShoppingCart, Target,
+  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain, ShoppingCart, Target, ScrollText,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import TronChat from "./Tron.jsx";
@@ -10,6 +10,8 @@ import { carregarFinanceiro, resumoFinanceiro } from "./financeiro";
 import { conferir, montarConfig } from "./senhaComando";
 import PainelML, { buscarDadosML, margemDoItem } from "./MercadoLivre.jsx";
 import PainelProspect, { buscarProspect, moverProspect, pesquisarProspect } from "./Prospect.jsx";
+import PainelPoliticas from "./Politicas.jsx";
+import { situacaoDaValidade } from "./politicas.js";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
 
@@ -165,7 +167,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, onToast, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, politicas, onSalvarPoliticas, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const [trocando, setTrocando] = useState(false);
   const [aba, setAba] = useState("geral");      // geral | tron | ml | cerebro | agentes
@@ -210,6 +212,10 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
     }
 
     const enviados = orcamentos.filter((o) => o.status === "enviado");
+    // Orçamento enviado perde a validade: antes de vencer, ainda dá para correr atrás.
+    const validades = enviados.map((o) => ({ ...o, v: situacaoDaValidade(o, politicas, hoje) }));
+    const vencendo = validades.filter((o) => o.v.estado === "vencendo").sort((a, b) => a.v.dias - b.v.dias);
+    const vencidos = validades.filter((o) => o.v.estado === "vencido");
     const parados = enviados
       .map((o) => ({ ...o, dias: o.dataEnvio ? diasEntre(o.dataEnvio, hoje) : null }))
       .filter((o) => o.dias != null && o.dias >= 3)
@@ -252,14 +258,14 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
     }, {})).sort((a, b) => b.valor - a.valor);
 
     return {
-      faturadoMes, ticket, osMes: osMes.length, serie, enviados, parados, taxa, aprovados: aprovados.length,
+      faturadoMes, ticket, osMes: osMes.length, serie, enviados, parados, taxa, aprovados: aprovados.length, vencendo, vencidos,
       aEnviar, atrasadosEnvio, visitasAtrasadas, osAtrasadas, osSemana, devolver, porVendedora, porOrigem,
       emAberto: emAberto.length, valorEmJogo,
       novosClientes: clientes.filter((c) => (c.criadoEm || "").startsWith(mes)).length,
     };
-  }, [orcamentos, ordens, clientes, hoje, mes]);
+  }, [orcamentos, ordens, clientes, hoje, mes, politicas]);
 
-  const alertas = d.atrasadosEnvio.length + d.visitasAtrasadas.length + d.osAtrasadas.length + d.parados.length;
+  const alertas = d.atrasadosEnvio.length + d.visitasAtrasadas.length + d.osAtrasadas.length + d.parados.length + d.vencendo.length + d.vencidos.length;
 
   const ABAS = [
     { id: "geral", nome: "VISÃO GERAL", icon: <Activity size={14} />, badge: alertas || null, urgente: alertas > 0 },
@@ -269,6 +275,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
       badge: (prospect?.leads || []).filter((l) => ["pesquisa_concluida", "qualificado", "aguardando_contato"].includes(l.estagio)).length || null },
     { id: "cerebro", nome: "CÉREBRO", icon: <Brain size={14} />, badge: cerebro.length || null },
     { id: "agentes", nome: "AGENTES", icon: <Radio size={14} /> },
+    { id: "politicas", nome: "POLÍTICAS", icon: <ScrollText size={14} /> },
   ];
 
   const AGENTES = [
@@ -361,6 +368,8 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
                   {d.visitasAtrasadas.length > 0 && <li><b>{d.visitasAtrasadas.length}</b> visita(s) de orçamento atrasada(s)</li>}
                   {d.osAtrasadas.length > 0 && <li><b>{d.osAtrasadas.length}</b> serviço(s) que passaram da data</li>}
                   {d.parados.length > 0 && <li><b>{d.parados.length}</b> orçamento(s) enviados sem resposta há 3+ dias</li>}
+                  {d.vencendo.length > 0 && <li><b>{d.vencendo.length}</b> orçamento(s) perdendo a validade em até 3 dias</li>}
+                  {d.vencidos.length > 0 && <li><b>{d.vencidos.length}</b> orçamento(s) com a validade já vencida</li>}
                 </ul>
               )}
             </Painel>
@@ -443,6 +452,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               financeiro={financeiro}
               mercadoLivre={ml}
               prospect={prospect}
+              politicas={politicas}
               custosML={custosML}
               metaMargem={metaMargem}
               vendedoras={vendedoras}
@@ -494,6 +504,12 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               onExcluir={onExcluirMemoria}
               onToast={onToast}
             />
+          </Painel>
+        )}
+
+        {aba === "politicas" && (
+          <Painel icon={<ScrollText size={14} />} titulo="Políticas comerciais da Vigiar">
+            <PainelPoliticas politicas={politicas} onSalvar={onSalvarPoliticas} onToast={onToast} />
           </Painel>
         )}
 

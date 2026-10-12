@@ -6,6 +6,7 @@ import {
 import { supabase } from "./supabaseOrc";
 import { margemDoItem } from "./MercadoLivre.jsx";
 import { contextoProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
+import { politicasParaAgentes } from "./politicas.js";
 
 /* ============ TRON — assistente do Centro de Comando ============ */
 
@@ -265,7 +266,7 @@ function contextoML(ml, custos, metaMargem) {
   };
 }
 
-export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, prospect, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
+export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, prospect, politicas, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [conversa, setConversa] = useState([]); // formato da API: {role, content}
   const [texto, setTexto] = useState("");
@@ -289,7 +290,11 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
 
   const contexto = useMemo(
     () => {
-      const base = montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje });
+      // As políticas vão para TODOS os agentes: ninguém pode responder uma regra diferente.
+      const base = {
+        ...montarContexto({ clientes, orcamentos, ordens, cerebro, vendedoras, hoje }),
+        politicasDaEmpresa: politicas ? politicasParaAgentes(politicas) : null,
+      };
       // O TRON precisa dos dois, porque delega; cada especialista recebe o que usa.
       if (agente === "tron") {
         return {
@@ -304,7 +309,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       if (agente === "prospect") return { ...base, prospeccao: contextoProspect(prospect) };
       return base;
     },
-    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro, mercadoLivre, prospect, custosML, metaMargem],
+    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro, mercadoLivre, prospect, politicas, custosML, metaMargem],
   );
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [conversa, pensando]);

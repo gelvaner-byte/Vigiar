@@ -290,7 +290,23 @@ export default async function handler(req, res) {
   if (!Array.isArray(mensagens) || mensagens.length === 0) return res.status(400).json({ erro: 'Sem mensagem.' })
 
   const persona = PERSONAS[agente] || PERSONAS.tron
-  const retrato = `RETRATO DO SISTEMA (dados reais, agora)\nHoje: ${contexto.hoje}\n\n${JSON.stringify(contexto, null, 1)}`
+  // As políticas vêm antes de tudo e em texto: são a regra oficial da casa, e nenhum agente
+  // pode responder diferente do que está aqui.
+  const pol = contexto.politicasDaEmpresa
+  const regras = pol
+    ? `POLÍTICAS OFICIAIS DA VIGIAR — valem para você e para qualquer resposta sua.
+Não invente outro prazo, não arredonde e não improvise condição de garantia.
+Se o Gelvan pedir algo fora disto, diga que foge da política e pergunte se ele quer abrir exceção.
+
+- Validade do orçamento: ${pol.validadeDoOrcamento}
+- Garantia quando a Vigiar fornece o produto e instala: ${pol.garantiaComProduto}
+- Garantia quando é só mão de obra: ${pol.garantiaSoMaoDeObra}
+- A cobertura inclui: ${(pol.oQueACoberturaInclui || []).join(' | ')}
+- Não está coberto: ${(pol.oQueNaoEstaCoberto || []).join(' | ')}
+- ${pol.observacaoLegal}
+- ${pol.regraDeOuro}\n`
+    : ''
+  const retrato = `${regras}\nRETRATO DO SISTEMA (dados reais, agora)\nHoje: ${contexto.hoje}\n\n${JSON.stringify(contexto, null, 1)}`
 
   try {
     let conversa = mensagens

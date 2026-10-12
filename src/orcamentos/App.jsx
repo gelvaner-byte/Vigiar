@@ -9,6 +9,7 @@ import {
 import { supabase } from "./supabaseOrc";
 import Comando from "./Comando.jsx";
 import { moverProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
+import { lerPoliticas, politicasParaAgentes, situacaoDaValidade, textoGarantia, tipoGarantiaSugerido, venceEm } from "./politicas.js";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
   assinarMudancas, lerCache, gravarCache,
@@ -283,7 +284,7 @@ function gerarOrcamentoBlob(orc) {
       if (resumoPagamento(orc)) { p.text(M, y, `Pagamento: ${resumoPagamento(orc)}`, { size: 9.5, bold: true }); y += 6; }
       p.text(M, y, `Vendedor: ${orc.vendedor || "-"}`, { size: 9.2 });
       if (orc.observacoes) { y += 6; p.wrap(`Obs.: ${orc.observacoes}`, 9, false, RIGHT - M).forEach((ln, k) => p.text(M, y + k * 4.4, ln, { size: 9 })); }
-      p.text(W / 2, 276, `ORÇAMENTO VÁLIDO POR ${orc.validadeDias || 7} DIAS!`, { size: 9.5, bold: true, align: "center", color: navy });
+      p.text(W / 2, 276, `ORÇAMENTO VÁLIDO POR ${orc.validadeDias || 15} DIAS!`, { size: 9.5, bold: true, align: "center", color: navy });
       p.text(W / 2, 282, "SUA SEGURANÇA EM PRIMEIRO LUGAR.", { size: 9.5, bold: true, align: "center", color: navy });
     });
   } catch (e) { console.error(e); return null; }
@@ -357,7 +358,7 @@ function desenharOrcamento(ctx, orc, S) {
   if (resumoPagamento(orc)) { T(M, y, `Pagamento: ${resumoPagamento(orc)}`, 9.5, { bold: true }); y += 6; }
   T(M, y, `Vendedor: ${orc.vendedor || "-"}`, 9.2);
   if (orc.observacoes) { _cfont(ctx, 9, false, S); y += 6; _cwrap(ctx, `Obs.: ${orc.observacoes}`, mm(RIGHT - M)).forEach((ln, k) => T(M, y + k * 4.4, ln, 9)); }
-  T(W / 2, 276, `ORÇAMENTO VÁLIDO POR ${orc.validadeDias || 7} DIAS!`, 9.5, { bold: true, align: "center", color: navy });
+  T(W / 2, 276, `ORÇAMENTO VÁLIDO POR ${orc.validadeDias || 15} DIAS!`, 9.5, { bold: true, align: "center", color: navy });
   T(W / 2, 282, "SUA SEGURANÇA EM PRIMEIRO LUGAR.", 9.5, { bold: true, align: "center", color: navy });
   ctx.textAlign = "left";
 }
@@ -406,6 +407,7 @@ function App() {
       const vend = (d.config.vendedoras && d.config.vendedoras.lista) || [];
       const eq = (d.config.equipe && d.config.equipe.membros) || [];
       setCfgSenhaComando(d.config.comando || null);
+      setPoliticas(lerPoliticas(d.config.politicas));
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
       setClientes(d.clientes);
@@ -475,6 +477,15 @@ function App() {
   // Centro de Comando: só para o dono, e ainda pede a senha de novo lá dentro.
   const [comandoAberto, setComandoAberto] = useState(false);
   // Senha própria do Centro de Comando (guardamos só o resumo dela, nunca a senha).
+  // As regras comerciais da casa. Ficam no banco, então valem para todo mundo e para os agentes.
+  const [politicas, setPoliticas] = useState(() => lerPoliticas(null));
+  const salvarPoliticas = async (novas) => {
+    const completas = lerPoliticas({ ...novas, atualizadoEm: new Date().toISOString(), atualizadoPor: meuNome || meuEmail });
+    setPoliticas(completas);
+    await salvarConfig("politicas", completas).catch(falhaAoSalvar);
+    return completas;
+  };
+
   const [cfgSenhaComando, setCfgSenhaComando] = useState(null);
   const definirSenhaComando = async (cfg) => {
     setCfgSenhaComando(cfg);
@@ -554,7 +565,7 @@ function App() {
         id: uid(), numero: nextNumero(orcamentos), ...dadosDoCliente(cli),
         descricaoServico: e.descricaoServico || "", dataVisita: e.dataVisita, horaVisita: e.horaVisita || "",
         duracaoVisita: DURACAO_VISITA, status: "agendado", prazoEnvio: "", itens: [], observacoes: "",
-        vendedor: e.vendedor || (vendAtiva ? vendAtiva.nome : ""), validadeDias: 7, dataEnvio: "", criadoEm: todayStr(),
+        vendedor: e.vendedor || (vendAtiva ? vendAtiva.nome : ""), validadeDias: politicas.validadeDias, dataEnvio: "", criadoEm: todayStr(),
       };
       updOrc([...orcamentos, orc]);
       return { ok: true, orcamentoId: orc.id, numero: orc.numero, mensagem: `Visita do orçamento Nº ${orc.numero} agendada para ${fmtDate(orc.dataVisita)}.` };
@@ -933,6 +944,7 @@ function App() {
           quemSou={meuNome || meuEmail}
           vendedoras={vendedoras}
           vendedorPadrao={vendAtiva ? vendAtiva.nome : ""}
+          politicas={politicas}
           onSalvar={salvarOrc}
           onExcluir={excluirOrc}
           onGerarOS={gerarOSdeOrcamento}
@@ -1007,6 +1019,8 @@ function App() {
           onSalvarCustoML={salvarCustoML}
           vendedoras={vendedoras}
           acoesTron={acoesTron}
+          politicas={politicas}
+          onSalvarPoliticas={salvarPoliticas}
           cfgSenha={cfgSenhaComando}
           onDefinirSenha={definirSenhaComando}
           onToast={setToast}
@@ -1905,7 +1919,7 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
 }
 
 /* ============ sheet de orçamento ============ */
-function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
+function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", politicas, onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [o, setO] = useState(() =>
@@ -1914,7 +1928,7 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
           id: uid(), numero: nextNumero(orcamentos), ...dadosDoCliente(inicial.cliente),
           descricaoServico: "", dataVisita: todayStr(), horaVisita: "",
           status: "agendado", prazoEnvio: "", itens: [], observacoes: "",
-          vendedor: vendedorPadrao || "", validadeDias: 7, dataEnvio: "", criadoEm: todayStr(),
+          vendedor: vendedorPadrao || "", validadeDias: politicas.validadeDias, dataEnvio: "", criadoEm: todayStr(),
         }
       : { ...inicial, itens: inicial.itens ? [...inicial.itens] : [] }
   );
@@ -2100,7 +2114,15 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
           )}
         </Campo>
         <Campo label="Validade (dias)">
-          <input type="number" min="1" className="vg-in" value={o.validadeDias ?? 7} onChange={(e) => set("validadeDias", e.target.value)} />
+          <input type="number" min="1" className="vg-in" value={o.validadeDias ?? politicas.validadeDias} onChange={(e) => set("validadeDias", e.target.value)} />
+          {(() => {
+            const v = situacaoDaValidade(o, politicas);
+            if (!v.vence) return null;
+            const texto = v.estado === "vencido" ? `Venceu em ${fmtDate(v.vence)}`
+              : v.estado === "vencendo" ? `Vence em ${fmtDate(v.vence)} — ${v.dias === 0 ? "é hoje" : `${v.dias} dia(s)`}`
+                : `Vale até ${fmtDate(v.vence)}`;
+            return <span className={"vg-validade" + (v.estado === "vencido" ? " ruim" : v.estado === "vencendo" ? " atencao" : "")}>{texto}</span>;
+          })()}
         </Campo>
       </div>
       <Campo label="Técnico que faz a visita" icon={<Wrench size={14} />}>
@@ -2182,6 +2204,19 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
 
       <Campo label="Observações">
         <textarea className="vg-in vg-ta" rows={2} value={o.observacoes} onChange={(e) => set("observacoes", e.target.value)} placeholder="Condições, prazo de execução, garantia…" />
+      </Campo>
+      <Campo label="Garantia" icon={<ShieldCheck size={14} />}>
+        <select className="vg-in" value={tipoGarantiaSugerido(o)} onChange={(e) => set("tipoGarantia", e.target.value)}>
+          <option value="comProduto">
+            Produto com instalação nossa — {politicas.garantia.comProduto.meses} meses
+          </option>
+          <option value="soMaoDeObra">
+            Somente mão de obra — {politicas.garantia.soMaoDeObra.dias} dias
+          </option>
+        </select>
+        <span className="vg-validade">
+          {o.tipoGarantia ? "Escolhido por você." : "Sugerido pelo que está na lista de itens."} {textoGarantia(o, politicas)}
+        </span>
       </Campo>
 
       {/* ações por status */}
@@ -3240,6 +3275,9 @@ function Estilos() {
   padding:11px 12px;font-size:15px;color:var(--ink);font-family:inherit;outline:none}
 .vg-in:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(226,100,10,.12)}
 .vg-ta{resize:vertical}
+.vg-validade{display:block;margin-top:5px;font-size:11.5px;line-height:1.45;color:#8a6a4a}
+.vg-validade.atencao{color:#c2680c;font-weight:600}
+.vg-validade.ruim{color:#c0392b;font-weight:600}
 .vg-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
 /* itens */
