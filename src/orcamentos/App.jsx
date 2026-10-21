@@ -4,11 +4,11 @@ import {
   Check, X, Clock, AlertTriangle, Phone, MapPin, Send, ChevronLeft,
   CalendarClock, CircleCheck, Pencil, ThumbsUp, ThumbsDown, Copy, Download,
   UserRound, Users, Star, Upload, LogOut, RefreshCw, Package, ExternalLink, ListChecks, ChevronRight, Search,
-  Megaphone, TrendingUp
+  Megaphone, TrendingUp, Target, CalendarDays, Mail
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import Comando from "./Comando.jsx";
-import { moverProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
+import { buscarProspect, moverProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
 import { lerPoliticas, politicasParaAgentes, situacaoDaValidade, textoGarantia, tipoGarantiaSugerido, venceEm } from "./politicas.js";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
@@ -61,6 +61,13 @@ const addDaysStr = (iso, n) => {
   const mm = String(dt.getMonth() + 1).padStart(2, "0");
   const dd = String(dt.getDate()).padStart(2, "0");
   return `${dt.getFullYear()}-${mm}-${dd}`;
+};
+// Quantos dias separam duas datas em texto (AAAA-MM-DD). Meio-dia evita a troca de fuso.
+const diasEntreStr = (de, ate) => {
+  if (!de || !ate) return null;
+  const a = new Date(`${de}T12:00:00`), b = new Date(`${ate}T12:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+  return Math.round((b - a) / 86400000);
 };
 const fmtDate = (iso) => {
   if (!iso) return "—";
@@ -688,8 +695,13 @@ function App() {
   };
 
   // ===== clientes =====
-  const salvarCliente = (cli) => {
+  // "silencioso" é o salvar de uma anotação: grava sem fechar a ficha nem avisar na tela.
+  const salvarCliente = (cli, { silencioso = false } = {}) => {
     const existe = clientes.some((x) => x.id === cli.id);
+    if (silencioso) {
+      updClientes(clientes.map((x) => (x.id === cli.id ? cli : x)));
+      return cli;
+    }
     updClientes(existe ? clientes.map((x) => (x.id === cli.id ? cli : x)) : [...clientes, cli]);
     // Mantém nome/telefone/endereço em dia nos orçamentos e OS desse cliente.
     if (existe) {
@@ -720,6 +732,41 @@ function App() {
   const novaOsParaCliente = (cli) => {
     setCliAberto(null);
     setOsAberta({ novo: true, cliente: cli });
+  };
+  // Quem o TRON PROSPECT achou. Fica junto dos clientes, mas só o escritório enxerga.
+  const [prospect, setProspect] = useState(null);
+  const [leadAberto, setLeadAberto] = useState(null);
+  useEffect(() => {
+    if (papel !== "escritorio") return;
+    let vivo = true;
+    buscarProspect().then((d) => vivo && setProspect(d)).catch(() => {});
+    return () => { vivo = false; };
+  }, [papel]);
+
+  // Prospectado vira cliente de verdade: leva os dados e a origem junto.
+  const virarCliente = (lead) => {
+    const cli = {
+      id: uid(), nome: lead.nome, telefone: lead.telefone || "", telefone2: lead.whatsapp || "",
+      endereco: lead.endereco || "", bairro: lead.bairro || "", documento: lead.cnpj || "",
+      email: lead.email || "", origem: "Prospecção", campanha: "",
+      observacoes: [lead.servicoRecomendado, lead.justificativa].filter(Boolean).join(" · "),
+      anotacoes: [{
+        id: uid(), em: new Date().toISOString(), por: meuNome || meuEmail,
+        texto: `Veio da prospecção com ${lead.pontuacao} pontos. ${lead.justificativa || ""}`.trim(),
+      }],
+      criadoEm: todayStr(), prospectId: lead.id,
+    };
+    updClientes([...clientes, cli]);
+    moverProspect(lead.id, "qualificado", "Cadastrado como cliente no app.").catch(() => {});
+    setLeadAberto(null);
+    setToast(`${cli.nome} agora é cliente.`);
+    setCliAberto(cli);
+  };
+
+  // Serviço que já aconteceu: entra com a data que foi, já concluído, sem mexer na agenda.
+  const lancarServicoFeito = (cli) => {
+    setCliAberto(null);
+    setOsAberta({ novo: true, cliente: cli, retroativo: true });
   };
 
   const salvarOrc = (orc) => {
@@ -897,7 +944,8 @@ function App() {
           />
         )}
         {view === "clientes" && (
-          <ListaClientes clientes={clientes} orcamentos={orcamentos} ordens={ordens} onAbrir={setCliAberto} />
+          <ListaClientes clientes={clientes} orcamentos={orcamentos} ordens={ordens} prospect={prospect}
+            onAbrir={setCliAberto} onAbrirLead={setLeadAberto} />
         )}
         {view === "orcamentos" && (
           <ListaOrcamentos orcamentos={orcamentos} clientes={clientes} ordens={ordens} onAbrir={setOrcAberto} />
@@ -973,6 +1021,8 @@ function App() {
       {cliAberto && (
         <SheetCliente
           inicial={cliAberto}
+          quemSou={meuNome || meuEmail}
+          onLancarFeito={lancarServicoFeito}
           clientes={clientes}
           orcamentos={orcamentos}
           ordens={ordens}
@@ -985,6 +1035,9 @@ function App() {
           onToast={setToast}
           onFechar={() => setCliAberto(null)}
         />
+      )}
+      {leadAberto && (
+        <SheetLead lead={leadAberto} onVirarCliente={virarCliente} onToast={setToast} onFechar={() => setLeadAberto(null)} />
       )}
       {share && <ModalShare titulo={share.titulo} texto={share.texto} onFechar={() => setShare(null)} />}
       {previewOrc && <PreviewOrcamento orc={previewOrc} onFechar={() => setPreviewOrc(null)} />}
@@ -1229,23 +1282,68 @@ function sugerirHorarios(ordens, orcamentos, { duracao = DURACAO_PADRAO, quantid
 const ORIGENS = ["Instagram", "Facebook", "Google", "WhatsApp (direto)", "Indicação", "Placa / carro", "Cliente antigo", "Passando na rua", "Outro"];
 const buscaTexto = (c) => [c.nome, c.telefone, c.endereco, c.bairro, c.documento].filter(Boolean).join(" ").toLowerCase();
 
-function ListaClientes({ clientes, orcamentos, ordens, onAbrir }) {
+function ListaClientes({ clientes, orcamentos, ordens, prospect, onAbrir, onAbrirLead }) {
   const [busca, setBusca] = useState("");
+  const [grupo, setGrupo] = useState("meus");   // meus | prospectados
+  const leads = prospect?.leads || [];
   const lista = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return [...clientes]
       .filter((c) => !q || buscaTexto(c).includes(q))
       .sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || ""), "pt-BR"));
   }, [clientes, busca]);
+  // Prospectado ainda não é cliente: é quem o TRON PROSPECT achou e você ainda não procurou.
+  const listaLeads = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    return [...leads]
+      .filter((l) => !q || `${l.nome} ${l.bairro} ${l.cidade} ${l.servicoRecomendado}`.toLowerCase().includes(q))
+      .sort((a, b) => (b.pontuacao || 0) - (a.pontuacao || 0));
+  }, [leads, busca]);
 
   return (
     <div className="vg-page">
       <span className="vg-eyebrow">Clientes</span>
-      <h1 className="vg-h1">Seus clientes</h1>
-      <Campo label="Procurar cliente" icon={<Search size={14} />}>
+      <h1 className="vg-h1">{grupo === "meus" ? "Seus clientes" : "Prospectados"}</h1>
+
+      <div className="vg-grupos">
+        <button className={"vg-grupo" + (grupo === "meus" ? " on" : "")} onClick={() => setGrupo("meus")}>
+          <Users size={14} /> Meus clientes <i>{clientes.length}</i>
+        </button>
+        <button className={"vg-grupo" + (grupo === "prospectados" ? " on" : "")} onClick={() => setGrupo("prospectados")}>
+          <Target size={14} /> Prospectados <i>{leads.length}</i>
+        </button>
+      </div>
+
+      <Campo label={grupo === "meus" ? "Procurar cliente" : "Procurar prospectado"} icon={<Search size={14} />}>
         <input className="vg-in" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, telefone, endereço…" />
       </Campo>
-      {clientes.length === 0 ? (
+
+      {grupo === "prospectados" ? (
+        leads.length === 0 ? (
+          <Vazio texto="Ninguém prospectado ainda. O TRON PROSPECT procura clientes novos toda manhã e eles aparecem aqui." />
+        ) : listaLeads.length === 0 ? (
+          <Vazio texto={`Nenhum prospectado encontrado para "${busca}".`} />
+        ) : (
+          <div className="vg-list">
+            {listaLeads.map((l) => (
+              <Card key={l.id} onClick={() => onAbrirLead(l)}>
+                <div className="vg-card-top">
+                  <span className="vg-cli-nome">
+                    <span className="vg-vend-av sm">{String(l.nome || "?").charAt(0).toUpperCase()}</span>{l.nome}
+                  </span>
+                  <span className={"vg-pont " + (l.prioridade || "baixa")}>{l.pontuacao}</span>
+                </div>
+                <LinkEndereco endereco={l.endereco} bairro={l.bairro ? `${l.bairro} - ${l.cidade}` : l.cidade} />
+                {l.telefone && <span className="vg-card-tel"><Phone size={12} /> {l.telefone}</span>}
+                <div className="vg-card-foot">
+                  <span className="vg-card-mat"><Target size={12} /> {l.servicoRecomendado || "A definir"}</span>
+                  <span className="vg-card-mat">{ROTULO_ESTAGIO_PROSPECT[l.estagio] || l.estagio}</span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )
+      ) : clientes.length === 0 ? (
         <Vazio texto="Nenhum cliente cadastrado. Toque no + para cadastrar o primeiro. Só é possível agendar orçamento ou serviço para cliente cadastrado." />
       ) : lista.length === 0 ? (
         <Vazio texto={`Nenhum cliente encontrado para "${busca}".`} />
@@ -1273,16 +1371,88 @@ function ListaClientes({ clientes, orcamentos, ordens, onAbrir }) {
   );
 }
 
-function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExcluir, onNovoOrc, onNovaOs, onAbrirOrc, onAbrirOs, onToast, onFechar }) {
+// Ficha do prospectado: o que o TRON PROSPECT achou, a mensagem pronta, e o botão que
+// transforma em cliente de verdade. Nada aqui envia nada — quem fala com o cliente é você.
+function SheetLead({ lead, onVirarCliente, onToast, onFechar }) {
+  const a = lead.abordagem || {};
+  const copiar = async (texto, oque) => {
+    try { await navigator.clipboard.writeText(texto); onToast && onToast(`${oque} copiado.`); }
+    catch { onToast && onToast("Não consegui copiar."); }
+  };
+  return (
+    <Sheet onFechar={onFechar} titulo={lead.nome}>
+      <div className="vg-resumo-cli">
+        <div><b className={`pont ${lead.prioridade}`}>{lead.pontuacao}</b><span>pontos</span></div>
+        <div><b>{lead.cidade}</b><span>{lead.bairro || "cidade"}</span></div>
+        <div><b>{ROTULO_ESTAGIO_PROSPECT[lead.estagio] || lead.estagio}</b><span>situação</span></div>
+      </div>
+
+      <Campo label="Oportunidade" icon={<Target size={14} />}>
+        <p className="vg-txt"><b>{lead.servicoRecomendado || "A definir"}</b></p>
+        <p className="vg-txt">{lead.justificativa}</p>
+      </Campo>
+
+      <Campo label="Contato comercial" icon={<Phone size={14} />}>
+        <div className="vg-contatos">
+          {lead.telefone && <button onClick={() => copiar(lead.telefone, "Telefone")}><Phone size={13} /> {lead.telefone}</button>}
+          {lead.whatsapp && <button onClick={() => copiar(lead.whatsapp, "WhatsApp")}><Phone size={13} /> {lead.whatsapp}</button>}
+          {lead.email && <button onClick={() => copiar(lead.email, "E-mail")}><Mail size={13} /> {lead.email}</button>}
+          {!lead.telefone && !lead.whatsapp && !lead.email && <span className="vg-dica">Sem contato público encontrado.</span>}
+        </div>
+      </Campo>
+      <LinkEndereco endereco={lead.endereco} bairro={lead.bairro ? `${lead.bairro} - ${lead.cidade}` : lead.cidade} />
+
+      {a.whatsapp && (
+        <Campo label="Mensagem pronta — você envia, o sistema não">
+          <p className="vg-msg-pronta">{a.whatsapp}</p>
+          <button className="vg-btn vg-btn-ghost vg-largo" onClick={() => copiar(a.whatsapp, "Mensagem")}>
+            <Share2 size={15} /> Copiar mensagem
+          </button>
+        </Campo>
+      )}
+
+      {!!(lead.evidencias || []).length && (
+        <Campo label="Por que ele foi escolhido">
+          <ul className="vg-ul">{lead.evidencias.map((e, i) => <li key={i}>{e}</li>)}</ul>
+        </Campo>
+      )}
+
+      <div className="vg-sheet-foot">
+        <button className="vg-btn vg-btn-primary" onClick={() => onVirarCliente(lead)}>
+          <Check size={16} /> Virar cliente
+        </button>
+      </div>
+      <span className="vg-dica">
+        Vira cliente quando você já falou com ele e vai fazer orçamento. Aí ele sai daqui e entra
+        na sua lista, com o histórico começando.
+      </span>
+    </Sheet>
+  );
+}
+
+function SheetCliente({ inicial, clientes, orcamentos, ordens, quemSou = "", onSalvar, onExcluir, onNovoOrc, onNovaOs, onLancarFeito, onAbrirOrc, onAbrirOs, onToast, onFechar }) {
   const novo = inicial.novo;
   const [c, setC] = useState(() =>
     novo
-      ? { id: uid(), nome: "", telefone: "", telefone2: "", endereco: "", bairro: "", documento: "", email: "", observacoes: "", origem: "", campanha: "", criadoEm: todayStr() }
-      : { ...inicial });
+      ? { id: uid(), nome: "", telefone: "", telefone2: "", endereco: "", bairro: "", documento: "", email: "", observacoes: "", anotacoes: [], origem: "", campanha: "", criadoEm: todayStr() }
+      : { ...inicial, anotacoes: Array.isArray(inicial.anotacoes) ? inicial.anotacoes : [] });
   const [erro, setErro] = useState("");
+  const [aba, setAba] = useState("dados");         // dados | historico | notas
+  const [nota, setNota] = useState("");
   const set = (k, v) => setC((p) => ({ ...p, [k]: v }));
   const h = novo ? { orcamentos: [], ordens: [] } : historicoCliente(c.id, orcamentos, ordens);
+  const concluidas = h.ordens.filter((o) => o.status === "concluida");
   const totalFechado = h.ordens.filter((o) => o.status !== "cancelada").reduce((s, o) => s + valorOS(o), 0);
+  // Linha do tempo única: orçamento e serviço misturados, do mais novo para o mais antigo.
+  const linhaDoTempo = useMemo(() => {
+    const itens = [
+      ...h.orcamentos.map((o) => ({ tipo: "orc", data: o.dataVisita || o.criadoEm, doc: o })),
+      ...h.ordens.map((o) => ({ tipo: "os", data: o.dataServico || o.criadoEm, doc: o })),
+    ];
+    return itens.sort((a, b) => String(b.data || "").localeCompare(String(a.data || "")));
+  }, [h.orcamentos, h.ordens]);
+  const ultimoServico = concluidas.map((o) => o.dataServico).filter(Boolean).sort().pop() || "";
+  const diasSemServico = ultimoServico ? diasEntreStr(ultimoServico, todayStr()) : null;
 
   const salvar = () => {
     if (!c.nome.trim()) { setErro("O nome do cliente é obrigatório."); return; }
@@ -1291,8 +1461,54 @@ function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExclu
     onSalvar({ ...c, nome: c.nome.trim() });
   };
 
+  // Anotação é registro com data e autor: fica o histórico, não some por cima da anterior.
+  const guardarNota = () => {
+    const txt = nota.trim();
+    if (!txt) return;
+    const nova = { id: uid(), em: new Date().toISOString(), texto: txt, por: quemSou };
+    const atualizado = { ...c, anotacoes: [nova, ...(c.anotacoes || [])] };
+    setC(atualizado);
+    setNota("");
+    onSalvar({ ...atualizado, nome: atualizado.nome.trim() }, { silencioso: true });
+  };
+  const apagarNota = (id) => {
+    const atualizado = { ...c, anotacoes: (c.anotacoes || []).filter((a) => a.id !== id) };
+    setC(atualizado);
+    onSalvar({ ...atualizado, nome: atualizado.nome.trim() }, { silencioso: true });
+  };
+
+  const ABAS_CLI = [
+    { id: "dados", nome: "Dados", icon: <Users size={13} /> },
+    { id: "historico", nome: `Histórico${linhaDoTempo.length ? ` (${linhaDoTempo.length})` : ""}`, icon: <FileText size={13} /> },
+    { id: "notas", nome: `Anotações${(c.anotacoes || []).length ? ` (${c.anotacoes.length})` : ""}`, icon: <Pencil size={13} /> },
+  ];
+
   return (
     <Sheet onFechar={onFechar} titulo={novo ? "Novo cliente" : c.nome || "Cliente"}>
+      {!novo && (
+        <>
+          <div className="vg-resumo-cli">
+            <div><b>{h.orcamentos.length}</b><span>orçamentos</span></div>
+            <div><b>{concluidas.length}</b><span>serviços feitos</span></div>
+            <div><b>{brl(totalFechado)}</b><span>faturado</span></div>
+            <div>
+              <b className={diasSemServico != null && diasSemServico > 365 ? "frio" : ""}>
+                {ultimoServico ? fmtDate(ultimoServico) : "—"}
+              </b>
+              <span>{diasSemServico != null ? `${diasSemServico} dias atrás` : "sem serviço ainda"}</span>
+            </div>
+          </div>
+          <nav className="vg-abas-cli">
+            {ABAS_CLI.map((a) => (
+              <button key={a.id} className={"vg-aba-cli" + (aba === a.id ? " on" : "")} onClick={() => setAba(a.id)}>
+                {a.icon} {a.nome}
+              </button>
+            ))}
+          </nav>
+        </>
+      )}
+
+      {(novo || aba === "dados") && (<>
       <Campo label="Nome ou empresa *">
         <input className={"vg-in" + (erro ? " vg-in-erro" : "")} value={c.nome} autoFocus={novo}
           onChange={(e) => { set("nome", e.target.value); setErro(""); }} placeholder="Ex.: Maria Silva / Padaria Pão Bom" />
@@ -1332,9 +1548,10 @@ function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExclu
           <input className="vg-in" value={c.email || ""} onChange={(e) => set("email", e.target.value)} placeholder="opcional" inputMode="email" />
         </Campo>
       </div>
-      <Campo label="Observações">
+      <Campo label="Observação fixa — o que vale sempre para este cliente">
         <textarea className="vg-in vg-ta" rows={2} value={c.observacoes || ""} onChange={(e) => set("observacoes", e.target.value)}
           placeholder="Ponto de referência, horário que atende, cuidado com cachorro…" />
+        <span className="vg-dica">Para anotar o que aconteceu num dia, use a aba Anotações.</span>
       </Campo>
 
       <div className="vg-sheet-foot">
@@ -1343,43 +1560,78 @@ function SheetCliente({ inicial, clientes, orcamentos, ordens, onSalvar, onExclu
           <button className="vg-iconbtn" onClick={() => onExcluir(c.id)} aria-label="Excluir cliente"><Trash2 size={18} /></button>
         )}
       </div>
+      </>)}
 
-      {!novo && (
-        <>
-          <div className="vg-acao-row" style={{ marginTop: 12 }}>
+      {!novo && aba === "historico" && (
+        <div className="vg-hist">
+          <div className="vg-acao-row">
             <button className="vg-btn vg-btn-ghost" onClick={() => onNovoOrc(c)}><FileText size={16} /> Novo orçamento</button>
             <button className="vg-btn vg-btn-ghost" onClick={() => onNovaOs(c)}><Wrench size={16} /> Novo serviço</button>
           </div>
+          <button className="vg-btn vg-btn-ghost vg-largo" onClick={() => onLancarFeito(c)}>
+            <CalendarDays size={16} /> Lançar serviço que já foi feito
+          </button>
+          <span className="vg-dica">
+            Para colocar no sistema um serviço antigo: data livre, já entra como concluído e não
+            atrapalha a agenda.
+          </span>
 
-          <div className="vg-hist">
-            <div className="vg-itens-head"><span>Histórico do cliente</span></div>
-            <div className="vg-stats">
-              <div className="vg-stat"><b>{h.orcamentos.length}</b><span>orçamentos</span></div>
-              <div className="vg-stat"><b>{h.ordens.length}</b><span>serviços</span></div>
-              <div className="vg-stat"><b style={{ fontSize: 16 }}>{brl(totalFechado)}</b><span>em serviços</span></div>
+          {linhaDoTempo.length === 0 ? (
+            <Vazio texto="Nada no histórico ainda. Tudo que você fizer para este cliente aparece aqui, do mais recente para o mais antigo." />
+          ) : (
+            <div className="vg-linha">
+              {linhaDoTempo.map(({ tipo, data, doc }) => (
+                <button key={doc.id} className="vg-linha-item"
+                  onClick={() => (tipo === "orc" ? onAbrirOrc(doc) : onAbrirOs(doc))}>
+                  <span className={"vg-linha-ponto " + tipo} />
+                  <div className="vg-linha-txt">
+                    <strong>
+                      {tipo === "orc" ? <><FileText size={12} /> Orçamento Nº {doc.numero}</> : <><Wrench size={12} /> Serviço Nº {doc.numero}</>}
+                    </strong>
+                    <em>{doc.descricao || doc.descricaoServico || "—"}</em>
+                  </div>
+                  <div className="vg-linha-dir">
+                    <span className="vg-linha-data">{data ? fmtDate(data) : "sem data"}</span>
+                    <span className="vg-hist-val">
+                      {(tipo === "orc" ? itemsTotal(doc.itens) : valorOS(doc)) > 0
+                        ? brl(tipo === "orc" ? itemsTotal(doc.itens) : valorOS(doc)) : "—"}
+                    </span>
+                    <Badge st={tipo === "orc" ? ORC_STATUS[doc.status] : OS_STATUS[doc.status]} />
+                  </div>
+                </button>
+              ))}
             </div>
+          )}
+        </div>
+      )}
 
-            {h.orcamentos.length === 0 && h.ordens.length === 0 && (
-              <Vazio texto="Nada no histórico ainda. Tudo que você fizer para este cliente aparece aqui." />
-            )}
-            {h.orcamentos.map((o) => (
-              <button key={o.id} className="vg-hist-item" onClick={() => onAbrirOrc(o)}>
-                <span className="vg-tarefa-tipo visita"><FileText size={11} /> Orç. Nº {o.numero}</span>
-                <span className="vg-hist-data">{fmtDate(o.dataVisita)}</span>
-                <span className="vg-hist-val">{itemsTotal(o.itens) > 0 ? brl(itemsTotal(o.itens)) : "—"}</span>
-                <Badge st={ORC_STATUS[o.status]} />
-              </button>
-            ))}
-            {h.ordens.map((o) => (
-              <button key={o.id} className="vg-hist-item" onClick={() => onAbrirOs(o)}>
-                <span className="vg-tarefa-tipo servico"><Wrench size={11} /> OS Nº {o.numero}</span>
-                <span className="vg-hist-data">{fmtDate(o.dataServico)}</span>
-                <span className="vg-hist-val">{valorOS(o) > 0 ? brl(valorOS(o)) : "—"}</span>
-                <Badge st={OS_STATUS[o.status]} />
-              </button>
-            ))}
-          </div>
-        </>
+      {!novo && aba === "notas" && (
+        <div className="vg-notas">
+          <Campo label="Anotar agora">
+            <textarea className="vg-in vg-ta" rows={3} value={nota} onChange={(e) => setNota(e.target.value)}
+              placeholder="O que foi conversado, o que o cliente pediu, o que ficou de fazer…" />
+            <button className="vg-btn vg-btn-primary vg-largo" onClick={guardarNota} disabled={!nota.trim()}>
+              <Plus size={15} /> Guardar anotação
+            </button>
+          </Campo>
+
+          {(c.anotacoes || []).length === 0 ? (
+            <Vazio texto="Nenhuma anotação ainda. Cada uma fica guardada com a data, então dá para olhar depois o que foi combinado e quando." />
+          ) : (
+            <div className="vg-notas-lista">
+              {c.anotacoes.map((a) => (
+                <article key={a.id} className="vg-nota">
+                  <header>
+                    <span>{new Date(a.em).toLocaleDateString("pt-BR")} · {new Date(a.em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                    {a.por && <em>{a.por}</em>}
+                    <button onClick={() => apagarNota(a.id)} aria-label="Apagar anotação"><Trash2 size={13} /></button>
+                  </header>
+                  <p>{a.texto}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </Sheet>
   );
@@ -2329,7 +2581,10 @@ function SheetOS({ inicial, ordens, orcamentos = [], clientes = [], papel = "esc
       ? {
           id: uid(), numero: nextNumero(ordens), ...dadosDoCliente(inicial.cliente),
           descricao: "", itens: [], dataServico: todayStr(), horaServico: "",
-          status: "agendada", observacoes: "", valor: "", materiais: [], criadoEm: todayStr(),
+          // Serviço antigo entra já concluído: ele não vai para a agenda nem cobra horário.
+          status: inicial.retroativo ? "concluida" : "agendada",
+          retroativo: !!inicial.retroativo,
+          observacoes: "", valor: "", materiais: [], criadoEm: todayStr(),
         }
       : {
           ...inicial,
@@ -2411,9 +2666,19 @@ function SheetOS({ inicial, ordens, orcamentos = [], clientes = [], papel = "esc
       {!novo && <div className="vg-sheet-status"><Badge st={OS_STATUS[o.status]} big /></div>}
       {o.orcamentoNum && <div className="vg-from">Gerada do orçamento Nº {o.orcamentoNum}</div>}
 
+      {o.retroativo && (
+        <div className="vg-retro">
+          <CalendarDays size={16} />
+          <span>
+            <b>Serviço que já foi feito.</b> Coloque a data em que aconteceu, mesmo que seja de
+            meses atrás. Entra direto como concluído, não aparece na agenda e não ocupa horário.
+          </span>
+        </div>
+      )}
+
       <SeletorCliente clientes={clientes} clienteId={o.clienteId}
         onSelecionar={(c) => { setO((p) => ({ ...p, ...dadosDoCliente(c) })); setErroCli(""); }} erro={erroCli} />
-      <Campo label="Data do serviço" icon={<CalendarClock size={14} />}>
+      <Campo label={o.retroativo ? "Data em que o serviço foi feito" : "Data do serviço"} icon={<CalendarClock size={14} />}>
         <input type="date" className="vg-in" value={o.dataServico} onChange={(e) => set("dataServico", e.target.value)} />
       </Campo>
       <div className="vg-row2">
@@ -3275,6 +3540,59 @@ function Estilos() {
   padding:11px 12px;font-size:15px;color:var(--ink);font-family:inherit;outline:none}
 .vg-in:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(226,100,10,.12)}
 .vg-ta{resize:vertical}
+/* ficha do cliente organizada: resumo, abas, linha do tempo e anotações */
+.vg-resumo-cli{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+@media (min-width:520px){.vg-resumo-cli{grid-template-columns:repeat(4,1fr)}}
+.vg-resumo-cli div{background:#fff6ee;border:1px solid #f0d8c0;border-radius:11px;padding:9px 11px}
+.vg-resumo-cli b{display:block;font-size:15px;font-weight:800;color:#8a3b00;line-height:1.25}
+.vg-resumo-cli b.frio{color:#b03030}
+.vg-resumo-cli b.pont{font-size:19px}
+.vg-resumo-cli span{display:block;font-size:10px;color:#9a7b60;margin-top:2px}
+.vg-abas-cli{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;scrollbar-width:none}
+.vg-abas-cli::-webkit-scrollbar{display:none}
+.vg-aba-cli{display:flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;cursor:pointer;
+  border-radius:99px;padding:8px 14px;font-size:12.5px;font-weight:700;font-family:inherit;
+  color:#8a6a4a;background:#fff;border:1px solid #f0d8c0}
+.vg-aba-cli.on{color:#fff;background:#e2640a;border-color:#e2640a}
+.vg-grupos{display:flex;gap:7px;margin-bottom:12px}
+.vg-grupo{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;
+  border-radius:11px;padding:11px 10px;font-size:12.5px;font-weight:700;font-family:inherit;
+  color:#8a6a4a;background:#fff;border:1px solid #f0d8c0}
+.vg-grupo.on{color:#fff;background:#e2640a;border-color:#e2640a}
+.vg-grupo i{font-style:normal;font-size:11px;opacity:.85}
+.vg-pont{margin-left:auto;font-size:12.5px;font-weight:800;border-radius:99px;padding:2px 9px;
+  color:#8a3b00;background:#ffe9d6;border:1px solid #f0d8c0}
+.vg-pont.alta{color:#0b6b43;background:#def5e9;border-color:#a8e0c6}
+.vg-pont.media{color:#8a3b00;background:#ffe9d6}
+.vg-linha{display:flex;flex-direction:column;gap:2px;margin-top:12px}
+.vg-linha-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
+  background:#fff;border:1px solid #f0d8c0;border-radius:11px;padding:10px 12px;font-family:inherit}
+.vg-linha-item:hover{border-color:#e2640a}
+.vg-linha-ponto{width:9px;height:9px;flex-shrink:0;border-radius:50%;background:#e2640a}
+.vg-linha-ponto.orc{background:#c98a3a}
+.vg-linha-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.vg-linha-txt strong{display:flex;align-items:center;gap:5px;font-size:12.5px;color:#5a3a20}
+.vg-linha-txt em{font-style:normal;font-size:11.5px;color:#9a7b60;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vg-linha-dir{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0}
+.vg-linha-data{font-size:11px;color:#9a7b60}
+.vg-notas{display:flex;flex-direction:column;gap:12px}
+.vg-notas-lista{display:flex;flex-direction:column;gap:8px}
+.vg-nota{background:#fff;border:1px solid #f0d8c0;border-radius:11px;padding:10px 12px}
+.vg-nota header{display:flex;align-items:center;gap:8px;font-size:10.5px;color:#9a7b60;margin-bottom:5px}
+.vg-nota header em{font-style:normal}
+.vg-nota header button{margin-left:auto;cursor:pointer;border:none;background:none;color:#c08070;padding:2px}
+.vg-nota p{margin:0;font-size:13px;line-height:1.55;color:#5a3a20;white-space:pre-wrap}
+.vg-retro{display:flex;align-items:flex-start;gap:9px;margin-bottom:14px;padding:11px 13px;border-radius:11px;
+  background:#eef6ff;border:1px solid #c5ddf5;color:#2a5580;font-size:12.5px;line-height:1.5}
+.vg-largo{width:100%;margin-top:8px}
+.vg-dica{display:block;margin-top:6px;font-size:11.5px;line-height:1.45;color:#9a7b60}
+.vg-txt{margin:0 0 6px;font-size:13px;line-height:1.55;color:#5a3a20}
+.vg-ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.6;color:#5a3a20}
+.vg-contatos{display:flex;flex-wrap:wrap;gap:7px}
+.vg-contatos button{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;
+  font-size:12.5px;color:#5a3a20;background:#fff;border:1px solid #f0d8c0;border-radius:9px;padding:8px 11px}
+.vg-msg-pronta{margin:0;padding:11px 13px;border-radius:11px;background:#fff6ee;border:1px solid #f0d8c0;
+  font-size:13px;line-height:1.6;color:#5a3a20;white-space:pre-wrap}
 .vg-validade{display:block;margin-top:5px;font-size:11.5px;line-height:1.45;color:#8a6a4a}
 .vg-validade.atencao{color:#c2680c;font-weight:600}
 .vg-validade.ruim{color:#c0392b;font-weight:600}
