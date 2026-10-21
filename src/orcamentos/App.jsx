@@ -3702,7 +3702,8 @@ function Estilos() {
   .vg-page{max-width:1240px;margin:0 auto;padding:28px 32px 16px}
   .vg-h1{font-size:26px;margin-bottom:18px}
   .vg-chips{margin:0;padding-left:0;padding-right:0;flex-wrap:wrap}
-  .vg-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+  /* No computador a lista continua lista: um embaixo do outro, em largura de leitura. */
+  .vg-list{display:flex;flex-direction:column;gap:10px;max-width:860px}
   .vg-card{cursor:pointer;transition:box-shadow .15s,border-color .15s}
   .vg-card:hover{border-color:#bcd0ea;box-shadow:0 6px 18px rgba(8,18,30,.08)}
   .vg-agenda{max-width:880px}
