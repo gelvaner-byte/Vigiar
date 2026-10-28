@@ -118,6 +118,18 @@ export async function lerConfig(cabecalhos) {
   }
 }
 
+export async function gravarConfig(cabecalhos, userId, cfg) {
+  const r = await fetch(`${SB_URL()}/rest/v1/orc_registros?on_conflict=colecao,id`, {
+    method: 'POST',
+    headers: { ...cabecalhos, 'content-type': 'application/json', Prefer: 'resolution=merge-duplicates' },
+    body: JSON.stringify([{
+      user_id: userId, colecao: 'config', id: 'prospect', dados: cfg,
+      excluido: false, atualizado_em: new Date().toISOString(),
+    }]),
+  })
+  if (!r.ok) throw new Error('Não consegui salvar a configuração: ' + (await r.text()))
+}
+
 /* ===== identidade e duplicidade ===== */
 
 const soLetras = (t) => String(t || '')

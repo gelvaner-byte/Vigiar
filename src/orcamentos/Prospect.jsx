@@ -68,7 +68,7 @@ export const pesquisarProspect = (pedido, segmentos) =>
   comToken("/api/prospect/pesquisar", { method: "POST", body: JSON.stringify({ pedido, segmentos }) }, 290);
 
 export const pausarProspect = (pausar, motivo) =>
-  comToken("/api/prospect/pausar", { method: "POST", body: JSON.stringify({ pausar, motivo }) });
+  comToken("/api/prospect/atualizar", { method: "POST", body: JSON.stringify({ acao: "pausar", pausar, motivo }) });
 
 export const moverProspect = (leadId, estagio, anotacao) =>
   comToken("/api/prospect/atualizar", { method: "POST", body: JSON.stringify({ leadId, estagio, anotacao }) });

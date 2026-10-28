@@ -3,7 +3,7 @@
 // Só responde a quem está logado no app E consta na lista de donos.
 // O TRON coordena especialistas (ver personas.js): ele pode consultá-los no meio da resposta.
 
-import { PERSONAS, ESPECIALISTAS } from './personas.js'
+import { PERSONAS, ESPECIALISTAS } from './_personas.js'
 
 const MODELO = process.env.TRON_MODELO || 'claude-sonnet-5-5'
 const WORKSPACE = process.env.ANTHROPIC_WORKSPACE_ID || ''
