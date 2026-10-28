@@ -49,10 +49,27 @@ export function resumoCaixa(caixa = [], fechamentos = [], hoje = hojeStr()) {
   };
 }
 
-function Lancar({ onLancar }) {
-  const [data, setData] = useState(hojeStr());
+// Último dia do mês, ou hoje quando o mês é o corrente — serve de sugestão ao lançar atrasado.
+function diaSugerido(mes, hoje) {
+  if (mes === mesDe(hoje)) return hoje;
+  const [a, m] = mes.split("-").map(Number);
+  const ultimo = new Date(a, m, 0).getDate();
+  return `${mes}-${String(ultimo).padStart(2, "0")}`;
+}
+
+function Lancar({ mesAlvo, hoje, onLancar }) {
+  const [data, setData] = useState(() => diaSugerido(mesAlvo, hoje));
   const [valor, setValor] = useState("");
   const [nota, setNota] = useState("");
+
+  // Trocou o mês lá em cima: a data acompanha, senão o lançamento cairia no mês errado.
+  const [mesVisto, setMesVisto] = useState(mesAlvo);
+  if (mesVisto !== mesAlvo) {
+    setMesVisto(mesAlvo);
+    setData(diaSugerido(mesAlvo, hoje));
+  }
+
+  const foraDoMes = mesDe(data) !== mesAlvo;
 
   const lancar = () => {
     const v = num(valor);
@@ -85,9 +102,16 @@ function Lancar({ onLancar }) {
       <button className="cx-btn" onClick={lancar} disabled={num(valor) <= 0}>
         <Plus size={15} /> Lançar venda do dia
       </button>
+      {foraDoMes && (
+        <span className="cx-aviso">
+          Essa data é de {rotuloMes(mesDe(data))}. O lançamento vai para lá, não para o mês que
+          você está vendo.
+        </span>
+      )}
       <span className="cx-dica">
         Lance o total que entrou no dia, serviço e mercadoria juntos, mão de obra incluída.
-        Pode lançar mais de uma vez no mesmo dia.
+        Pode lançar mais de uma vez no mesmo dia, e a data pode ser de qualquer dia passado —
+        serve para colocar em dia o que ficou para trás.
       </span>
     </div>
   );
@@ -160,9 +184,16 @@ export default function Caixa({ caixa = [], fechamentos = [], onLancar, onApagar
   const vendasDoMesVendo = totalDoMes(caixa, mesVendo);
   const fechamentoVendo = fechamentos.find((f) => f.id === mesVendo) || null;
 
-  // Meses que existem: os com lançamento, os fechados, e sempre o atual.
+  // Dois anos para trás ficam sempre abertos, mesmo vazios: é assim que se lança o que
+  // ficou para trás. Mês mais antigo que isso entra na lista se tiver algo nele.
   const meses = useMemo(() => {
-    const s = new Set([mesDe(hoje), ...caixa.map((l) => mesDe(l.data)), ...fechamentos.map((f) => f.id)]);
+    const base = new Date(`${hoje}T12:00:00`);
+    const ultimos = [];
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
+      ultimos.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    const s = new Set([...ultimos, ...caixa.map((l) => mesDe(l.data)), ...fechamentos.map((f) => f.id)]);
     return [...s].filter(Boolean).sort().reverse();
   }, [caixa, fechamentos, hoje]);
 
@@ -190,7 +221,14 @@ export default function Caixa({ caixa = [], fechamentos = [], onLancar, onApagar
         </select>
       </div>
 
-      {!fechamentoVendo && <Lancar onLancar={onLancar} />}
+      {fechamentoVendo ? (
+        <p className="cx-aviso">
+          {rotuloMes(mesVendo)} está fechado, por isso não dá para lançar nem apagar. Reabra
+          abaixo se precisar acertar alguma coisa.
+        </p>
+      ) : (
+        <Lancar mesAlvo={mesVendo} hoje={hoje} onLancar={onLancar} />
+      )}
 
       <Fechamento mes={mesVendo} vendas={vendasDoMesVendo} fechamento={fechamentoVendo}
         onFechar={onFecharMes} onReabrir={onReabrirMes} />
@@ -254,6 +292,8 @@ function Estilo() {
 .cx h4{margin:0 0 9px;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
   color:#ff9a45;font-family:ui-monospace,monospace}
 .cx-dica{display:block;font-size:11.5px;line-height:1.5;color:#7e94b4}
+.cx-aviso{margin:0;border-radius:9px;padding:10px 12px;font-size:12px;line-height:1.5;
+  color:#ffb27a;background:rgba(255,140,50,.09);border:1px solid rgba(255,140,50,.3)}
 .cx-dica b{color:#dce7f5}
 .cx-vazio{margin:0;font-size:12.5px;line-height:1.55;color:#6f87a8}
 .cx-topo{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
