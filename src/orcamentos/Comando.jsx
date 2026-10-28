@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   ShieldCheck, X, Lock, TrendingUp, FileText, Wrench, Users, Package,
-  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain, ShoppingCart, Target, ScrollText,
+  AlertTriangle, Megaphone, Bot, CircleDollarSign, Activity, Radio, Brain, ShoppingCart, Target, ScrollText, Wallet,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import TronChat from "./Tron.jsx";
@@ -11,6 +11,7 @@ import { conferir, montarConfig } from "./senhaComando";
 import PainelML, { buscarDadosML, margemDoItem } from "./MercadoLivre.jsx";
 import PainelProspect, { buscarProspect, moverProspect, pesquisarProspect } from "./Prospect.jsx";
 import PainelPoliticas from "./Politicas.jsx";
+import PainelCaixa, { resumoCaixa } from "./Caixa.jsx";
 import { memoriasDasPoliticas, situacaoDaValidade } from "./politicas.js";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
@@ -167,7 +168,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, politicas, onSalvarPoliticas, onToast, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, politicas, onSalvarPoliticas, caixa = [], fechamentos = [], onLancarCaixa, onApagarCaixa, onFecharMes, onReabrirMes, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const [trocando, setTrocando] = useState(false);
   const [aba, setAba] = useState("geral");      // geral | tron | ml | cerebro | agentes
@@ -196,20 +197,11 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
   const d = useMemo(() => {
     const concluidas = ordens.filter((o) => o.status === "concluida");
     const osMes = concluidas.filter((o) => (o.dataServico || "").startsWith(mes));
-    const faturadoMes = osMes.reduce((s, o) => s + valorOS(o), 0);
+    // Dinheiro vem do CAIXA, não do serviço fechado: só conta o que o Gelvan lançou.
+    const cx = resumoCaixa(caixa, fechamentos, hoje);
+    const faturadoMes = cx.vendasDoMes;
     const ticket = osMes.length ? faturadoMes / osMes.length : 0;
-
-    // últimos 6 meses de faturamento
-    const base = new Date();
-    const serie = [];
-    for (let i = 5; i >= 0; i--) {
-      const dt = new Date(base.getFullYear(), base.getMonth() - i, 1);
-      const chave = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-      serie.push({
-        rotulo: MES_CURTO[dt.getMonth()],
-        valor: concluidas.filter((o) => (o.dataServico || "").startsWith(chave)).reduce((s, o) => s + valorOS(o), 0),
-      });
-    }
+    const serie = cx.serie.map((s) => ({ rotulo: s.rotulo, valor: s.valor }));
 
     const enviados = orcamentos.filter((o) => o.status === "enviado");
     // Orçamento enviado perde a validade: antes de vencer, ainda dá para correr atrás.
@@ -258,12 +250,12 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
     }, {})).sort((a, b) => b.valor - a.valor);
 
     return {
-      faturadoMes, ticket, osMes: osMes.length, serie, enviados, parados, taxa, aprovados: aprovados.length, vencendo, vencidos,
+      faturadoMes, ticket, osMes: osMes.length, serie, enviados, parados, taxa, aprovados: aprovados.length, vencendo, vencidos, cx,
       aEnviar, atrasadosEnvio, visitasAtrasadas, osAtrasadas, osSemana, devolver, porVendedora, porOrigem,
       emAberto: emAberto.length, valorEmJogo,
       novosClientes: clientes.filter((c) => (c.criadoEm || "").startsWith(mes)).length,
     };
-  }, [orcamentos, ordens, clientes, hoje, mes, politicas]);
+  }, [orcamentos, ordens, clientes, hoje, mes, politicas, caixa, fechamentos]);
 
   const alertas = d.atrasadosEnvio.length + d.visitasAtrasadas.length + d.osAtrasadas.length + d.parados.length + d.vencendo.length + d.vencidos.length;
 
@@ -275,6 +267,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
       badge: (prospect?.leads || []).filter((l) => ["pesquisa_concluida", "qualificado", "aguardando_contato"].includes(l.estagio)).length || null },
     { id: "cerebro", nome: "CÉREBRO", icon: <Brain size={14} />, badge: cerebro.length + memoriasDasPoliticas(politicas).length },
     { id: "agentes", nome: "AGENTES", icon: <Radio size={14} /> },
+    { id: "caixa", nome: "CAIXA", icon: <Wallet size={14} /> },
     { id: "politicas", nome: "POLÍTICAS", icon: <ScrollText size={14} /> },
   ];
 
@@ -341,9 +334,11 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
             <div className="cmd-anel a2" />
             <div className="cmd-anel a3" />
             <div className="cmd-centro">
-              <span className="cmd-centro-rot">FATURADO EM {MES_CURTO[new Date().getMonth()].toUpperCase()}</span>
+              <span className="cmd-centro-rot">CAIXA DE {MES_CURTO[new Date().getMonth()].toUpperCase()}</span>
               <strong>{curto(d.faturadoMes)}</strong>
-              <span className="cmd-centro-sub">{d.osMes} serviço(s) concluído(s)</span>
+              <span className="cmd-centro-sub">
+                {d.cx.diasLancados ? `${d.cx.diasLancados} dia(s) lançado(s)` : "nada lançado ainda"}
+              </span>
             </div>
           </div>
 
@@ -357,8 +352,19 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
           </div>
 
           <div className="cmd-grade">
-            <Painel icon={<Activity size={14} />} titulo="Faturamento · 6 meses">
+            <Painel icon={<Activity size={14} />} titulo="Caixa · 6 meses">
               <Grafico serie={d.serie} />
+              {d.cx.fechamentoDoMes ? (
+                <p className="cmd-dim">
+                  Mês fechado: lucro de {brl(d.cx.fechamentoDoMes.lucro)} e{" "}
+                  {brl(d.cx.fechamentoDoMes.mercadoria)} em mercadoria e custos
+                  ({d.cx.fechamentoDoMes.margem.toFixed(1)}% de margem).
+                </p>
+              ) : (
+                <p className="cmd-dim">
+                  Vem do que você lança na aba CAIXA. Serviço concluído no app não entra aqui sozinho.
+                </p>
+              )}
             </Painel>
 
             <Painel icon={<AlertTriangle size={14} />} titulo={`Precisa de você · ${alertas}`} alerta={alertas > 0}>
@@ -453,6 +459,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               mercadoLivre={ml}
               prospect={prospect}
               politicas={politicas}
+              caixa={d.cx}
               custosML={custosML}
               metaMargem={metaMargem}
               vendedoras={vendedoras}
@@ -505,6 +512,13 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               onExcluir={onExcluirMemoria}
               onToast={onToast}
             />
+          </Painel>
+        )}
+
+        {aba === "caixa" && (
+          <Painel icon={<Wallet size={14} />} titulo="Caixa — o que entrou de verdade">
+            <PainelCaixa caixa={caixa} fechamentos={fechamentos} onLancar={onLancarCaixa}
+              onApagar={onApagarCaixa} onFecharMes={onFecharMes} onReabrirMes={onReabrirMes} />
           </Painel>
         )}
 

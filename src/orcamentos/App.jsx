@@ -415,6 +415,8 @@ function App() {
       const eq = (d.config.equipe && d.config.equipe.membros) || [];
       setCfgSenhaComando(d.config.comando || null);
       setPoliticas(lerPoliticas(d.config.politicas));
+      setCaixa(d.caixa || []);
+      setFechamentos(d.fechamentos || []);
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
       setClientes(d.clientes);
@@ -733,6 +735,27 @@ function App() {
     setCliAberto(null);
     setOsAberta({ novo: true, cliente: cli });
   };
+  // CAIXA — o faturamento é o que o Gelvan lança, não o que o app fecha de serviço.
+  const [caixa, setCaixa] = useState([]);
+  const [fechamentos, setFechamentos] = useState([]);
+  const updCaixa = (next) => {
+    const antes = caixa;
+    setCaixa(next);
+    sincronizarLista("caixa", antes, next).catch(falhaAoSalvar);
+  };
+  const updFechamentos = (next) => {
+    const antes = fechamentos;
+    setFechamentos(next);
+    sincronizarLista("fechamentos", antes, next).catch(falhaAoSalvar);
+  };
+  const lancarCaixa = (l) => { updCaixa([...caixa, l]); setToast(`Lançado: ${brl(l.valor)}.`); };
+  const apagarCaixa = (id) => updCaixa(caixa.filter((l) => l.id !== id));
+  const fecharMes = (f) => {
+    updFechamentos([...fechamentos.filter((x) => x.id !== f.id), f]);
+    setToast(`Mês fechado: lucro de ${brl(f.lucro)}.`);
+  };
+  const reabrirMes = (id) => updFechamentos(fechamentos.filter((f) => f.id !== id));
+
   // Quem o TRON PROSPECT achou. Fica junto dos clientes, mas só o escritório enxerga.
   const [prospect, setProspect] = useState(null);
   const [leadAberto, setLeadAberto] = useState(null);
@@ -1074,6 +1097,12 @@ function App() {
           acoesTron={acoesTron}
           politicas={politicas}
           onSalvarPoliticas={salvarPoliticas}
+          caixa={caixa}
+          fechamentos={fechamentos}
+          onLancarCaixa={lancarCaixa}
+          onApagarCaixa={apagarCaixa}
+          onFecharMes={fecharMes}
+          onReabrirMes={reabrirMes}
           cfgSenha={cfgSenhaComando}
           onDefinirSenha={definirSenhaComando}
           onToast={setToast}

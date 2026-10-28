@@ -266,7 +266,7 @@ function contextoML(ml, custos, metaMargem) {
   };
 }
 
-export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, prospect, politicas, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
+export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, prospect, politicas, caixa, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [conversa, setConversa] = useState([]); // formato da API: {role, content}
   const [texto, setTexto] = useState("");
@@ -298,6 +298,15 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
           cerebro: [...memoriasDasPoliticas(politicas), ...cerebro],
         }),
         politicasDaEmpresa: politicas ? politicasParaAgentes(politicas) : null,
+        caixa: caixa ? {
+          mes: caixa.mes,
+          vendasDoMes: caixa.vendasDoMes,
+          diasLancados: caixa.diasLancados,
+          seisMeses: caixa.serie,
+          fechamentoDoMes: caixa.fechamentoDoMes,
+          mesesFechados: caixa.mesesFechados,
+          comoFunciona: "O faturamento é o que o Gelvan lança à mão no caixa, dia a dia. Serviço concluído no app NÃO vira faturamento. No fim do mês ele informa o lucro e o resto é mercadoria e custos.",
+        } : null,
       };
       // O TRON precisa dos dois, porque delega; cada especialista recebe o que usa.
       if (agente === "tron") {
@@ -313,7 +322,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       if (agente === "prospect") return { ...base, prospeccao: contextoProspect(prospect) };
       return base;
     },
-    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro, mercadoLivre, prospect, politicas, custosML, metaMargem],
+    [clientes, orcamentos, ordens, cerebro, vendedoras, hoje, agente, financeiro, mercadoLivre, prospect, politicas, caixa, custosML, metaMargem],
   );
 
   useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth" }); }, [conversa, pensando]);

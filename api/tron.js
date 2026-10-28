@@ -306,7 +306,17 @@ Se o Gelvan pedir algo fora disto, diga que foge da política e pergunte se ele 
 - ${pol.observacaoLegal}
 - ${pol.regraDeOuro}\n`
     : ''
-  const retrato = `${regras}\nRETRATO DO SISTEMA (dados reais, agora)\nHoje: ${contexto.hoje}\n\n${JSON.stringify(contexto, null, 1)}`
+  // Dinheiro tem uma regra própria aqui, e errar isso faz o agente dizer um faturamento que não existe.
+  const caixa = contexto.caixa
+    ? `COMO O DINHEIRO É CONTADO NESTA EMPRESA
+O faturamento NÃO sai do serviço concluído no app. Quem diz quanto entrou é o Gelvan, lançando
+dia a dia na aba CAIXA — serviço e mercadoria juntos, mão de obra incluída. No fim do mês ele
+informa quanto sobrou de lucro, e a diferença é mercadoria e custos.
+Ao falar de faturamento, use o bloco "caixa" do retrato, nunca a soma das ordens de serviço.
+Se o mês tem poucos dias lançados, diga que o número está incompleto em vez de tratá-lo como
+o resultado fechado do mês. Mês sem fechamento não tem lucro conhecido: não estime.\n`
+    : ''
+  const retrato = `${regras}${caixa}\nRETRATO DO SISTEMA (dados reais, agora)\nHoje: ${contexto.hoje}\n\n${JSON.stringify(contexto, null, 1)}`
 
   try {
     let conversa = mensagens

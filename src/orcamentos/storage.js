@@ -55,8 +55,11 @@ export async function carregarTudo() {
   if (error) await conferir(error)
   // Se o mesmo registro vier em duplicidade (cópias antigas de antes da chave única),
   // fica só uma — senão o app tentaria gravar o mesmo id duas vezes no mesmo comando.
-  const out = { orcamentos: [], ordens: [], clientes: [], cerebro: [], ml_custos: [], config: {} }
-  const vistos = { orcamentos: new Set(), ordens: new Set(), clientes: new Set(), cerebro: new Set(), ml_custos: new Set() }
+  const out = { orcamentos: [], ordens: [], clientes: [], cerebro: [], ml_custos: [], caixa: [], fechamentos: [], config: {} }
+  const vistos = {
+    orcamentos: new Set(), ordens: new Set(), clientes: new Set(), cerebro: new Set(),
+    ml_custos: new Set(), caixa: new Set(), fechamentos: new Set(),
+  }
   for (const r of data || []) {
     if (r.colecao === 'config') { out.config[r.id] = r.dados; continue }
     if (!out[r.colecao] || vistos[r.colecao].has(r.id)) continue
