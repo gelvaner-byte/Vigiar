@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import Comando from "./Comando.jsx";
-import { buscarProspect, moverProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
+import { buscarProspect, moverProspect, pausarProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
 import { lerPoliticas, politicasParaAgentes, situacaoDaValidade, textoGarantia, tipoGarantiaSugerido, venceEm } from "./politicas.js";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
@@ -626,6 +626,11 @@ function App() {
         novos: (r.novos || []).map((l) => ({ id: l.id, nome: l.nome, cidade: l.cidade, pontuacao: l.pontuacao, servico: l.servicoRecomendado })),
         mensagem: rel.recado || "Pesquisa concluída.",
       };
+    }
+    if (nome === "prospect_pausar") {
+      const r = await pausarProspect(e.pausar !== false, e.motivo);
+      setProspect(await buscarProspect().catch(() => prospect));
+      return { ok: true, pausado: r.pausado, mensagem: r.mensagem };
     }
     if (nome === "prospect_mover_funil") {
       if (!e.leadId) throw new Error("Falta dizer qual cliente da prospecção.");

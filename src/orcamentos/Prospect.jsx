@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
-  Search, RefreshCw, Copy, MapPin, Phone, Mail, Globe, Target,
+  Search, RefreshCw, Copy, MapPin, Phone, Mail, Globe, Target, Pause, Play,
   ChevronRight, AlertTriangle, Check, Building2, TrendingUp,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
@@ -66,6 +66,9 @@ export const buscarProspect = () => comToken("/api/prospect/dados");
 // Pesquisa é a chamada demorada do sistema: dou quase cinco minutos antes de desistir.
 export const pesquisarProspect = (pedido, segmentos) =>
   comToken("/api/prospect/pesquisar", { method: "POST", body: JSON.stringify({ pedido, segmentos }) }, 290);
+
+export const pausarProspect = (pausar, motivo) =>
+  comToken("/api/prospect/pausar", { method: "POST", body: JSON.stringify({ pausar, motivo }) });
 
 export const moverProspect = (leadId, estagio, anotacao) =>
   comToken("/api/prospect/atualizar", { method: "POST", body: JSON.stringify({ leadId, estagio, anotacao }) });
@@ -241,7 +244,7 @@ function Ficha({ lead, onFechar, onMover, onToast }) {
   );
 }
 
-export default function Prospect({ dados, carregando, onAtualizar, onPesquisar, onMover, onToast }) {
+export default function Prospect({ dados, carregando, onAtualizar, onPesquisar, onMover, onPausar, onToast }) {
   const [aberto, setAberto] = useState(null);
   const [cidade, setCidade] = useState("");
   const [segmento, setSegmento] = useState("");
@@ -253,6 +256,7 @@ export default function Prospect({ dados, carregando, onAtualizar, onPesquisar, 
   const [erro, setErro] = useState("");
 
   const leads = dados?.leads || [];
+  const pausado = !!dados?.cfg?.pausado;
   const relatorio = (dados?.relatorios || [])[0] || null;
 
   const lista = useMemo(() => {
@@ -305,7 +309,18 @@ export default function Prospect({ dados, carregando, onAtualizar, onPesquisar, 
         <button className="pro-btn fantasma" onClick={onAtualizar} disabled={carregando}>
           <RefreshCw size={13} className={carregando ? "girando" : ""} /> Atualizar
         </button>
+        <button className={"pro-btn " + (pausado ? "" : "fantasma")} onClick={() => onPausar(!pausado)}>
+          {pausado ? <><Play size={13} /> Religar</> : <><Pause size={13} /> Pausar</>}
+        </button>
       </div>
+
+      {pausado && (
+        <p className="pro-aviso">
+          <Pause size={13} /> Prospecção pausada
+          {dados?.cfg?.pausadoEm ? ` desde ${new Date(dados.cfg.pausadoEm).toLocaleDateString("pt-BR")}` : ""}.
+          A rotina da manhã não vai procurar ninguém até você religar. O que já está na base continua aqui.
+        </p>
+      )}
 
       {relatorio && (
         <div className="pro-relatorio">

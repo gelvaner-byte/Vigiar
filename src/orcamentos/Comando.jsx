@@ -9,7 +9,7 @@ import CerebroPainel from "./Cerebro.jsx";
 import { carregarFinanceiro, resumoFinanceiro } from "./financeiro";
 import { conferir, montarConfig } from "./senhaComando";
 import PainelML, { buscarDadosML, margemDoItem } from "./MercadoLivre.jsx";
-import PainelProspect, { buscarProspect, moverProspect, pesquisarProspect } from "./Prospect.jsx";
+import PainelProspect, { buscarProspect, moverProspect, pausarProspect, pesquisarProspect } from "./Prospect.jsx";
 import PainelPoliticas from "./Politicas.jsx";
 import PainelCaixa, { resumoCaixa } from "./Caixa.jsx";
 import { memoriasDasPoliticas, situacaoDaValidade } from "./politicas.js";
@@ -496,6 +496,11 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               }}
               onMover={async (leadId, estagio, anotacao) => {
                 await moverProspect(leadId, estagio, anotacao);
+                await atualizarProspect();
+              }}
+              onPausar={async (pausar) => {
+                const r = await pausarProspect(pausar);
+                onToast && onToast(r.mensagem);
                 await atualizarProspect();
               }}
               onToast={onToast}

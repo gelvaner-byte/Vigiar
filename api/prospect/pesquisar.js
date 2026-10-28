@@ -23,6 +23,12 @@ export default async function handler(req, res) {
   try {
     const cabecalhos = auth({ jwt })
     const cfg = await lerConfig(cabecalhos)
+    if (cfg.pausado) {
+      return res.status(409).json({
+        erro: 'A prospecção está pausada. Religue antes de pedir uma busca.',
+        pausado: true,
+      })
+    }
     const { relatorio, novos } = await rodarRotina({
       cabecalhos, cfg, userId: dono.id,
       pedidoLivre: String(pedido || '').trim(),

@@ -111,6 +111,7 @@ const ROTULO_ACAO = {
   ml_responder_pergunta: "Responder cliente no Mercado Livre",
   prospect_pesquisar_agora: "Pesquisar clientes novos agora",
   prospect_mover_funil: "Anotar situação do cliente",
+  prospect_pausar: "Ligar ou desligar a prospecção",
 };
 // As que saem da Vigiar e aparecem para o cliente lá fora: card em vermelho.
 const ACAO_EXTERNA = new Set(Object.keys(ROTULO_ACAO).filter((k) => k.startsWith("ml_")));
@@ -142,6 +143,9 @@ function Acao({ bloco, clientes, anuncios = [], onConfirmar, onRecusar, estado }
   } else if (bloco.name === "prospect_pesquisar_agora") {
     linhas.push(["Procurar", e.pedido], ["Segmentos", (e.segmentos || []).join(", ")],
       ["Demora", "cerca de um minuto"]);
+  } else if (bloco.name === "prospect_pausar") {
+    linhas.push(["O que faz", e.pausar === false ? "Voltar a procurar clientes novos" : "Parar de procurar clientes novos"],
+      ["Motivo", e.motivo]);
   } else if (bloco.name === "prospect_mover_funil") {
     linhas.push(["Cliente", e.leadId], ["Nova situação", ROTULO_ESTAGIO_PROSPECT[e.estagio] || e.estagio],
       ["Anotação", e.anotacao]);

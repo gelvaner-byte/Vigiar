@@ -200,6 +200,18 @@ const FERRAMENTAS_PROSPECT = [
     },
   },
   {
+    name: 'prospect_pausar',
+    description: 'Liga ou desliga a prospecção. Pausada, a rotina da manhã não procura ninguém e não gasta busca. Use quando o Gelvan pedir para parar ou para voltar a procurar clientes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        pausar: { type: 'boolean', description: 'true para parar, false para voltar a procurar' },
+        motivo: { type: 'string', description: 'por que, nas palavras dele' },
+      },
+      required: ['pausar'],
+    },
+  },
+  {
     name: 'prospect_mover_funil',
     description: 'Anota em que pé está um cliente da prospecção. Só registra o que o Gelvan já fez por fora — não entra em contato com ninguém.',
     input_schema: {

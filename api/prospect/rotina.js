@@ -62,6 +62,19 @@ function normalizar(ficha, cfg) {
 }
 
 export async function rodarRotina({ cabecalhos, cfg, userId, pedidoLivre = '', segmentos = null, quantidadePorBusca = null }) {
+  // Prospecção pausada pelo dono: não procura nada e não gasta busca, até ele mandar voltar.
+  if (cfg.pausado) {
+    const relatorio = {
+      id: hojeBR(), data: hojeBR(), geradoEm: new Date().toISOString(),
+      pausado: true, novos: 0, atualizados: 0, qualificados: 0, alta: 0, recorrentes: 0,
+      consultasWeb: 0, cidades: cfg.cidades, metaDiaria: cfg.metaDiaria,
+      porCidade: {}, porSegmento: {}, destaques: [], pendencias: [], falhas: [], leadIds: [],
+      recado: `Prospecção pausada${cfg.pausadoEm ? ` desde ${cfg.pausadoEm.slice(0, 10)}` : ''}. Não procurei ninguém hoje.`,
+    }
+    await gravar('prospect_relatorios', [relatorio], cabecalhos, userId)
+    return { relatorio, novos: [], atualizados: [] }
+  }
+
   const existentes = await lerColecao('prospect_leads', cabecalhos)
   const indice = indiceDeChaves(existentes)
   const nomesConhecidos = existentes.map((l) => `${l.nome} (${l.cidade})`)
