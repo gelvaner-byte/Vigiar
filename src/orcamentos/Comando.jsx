@@ -168,7 +168,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, politicas, onSalvarPoliticas, caixa = [], fechamentos = [], onLancarCaixa, onApagarCaixa, onFecharMes, onReabrirMes, onToast, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, politicas, onSalvarPoliticas, caixa = [], fechamentos = [], conversas = {}, onGuardarConversa, onLancarCaixa, onApagarCaixa, onFecharMes, onReabrirMes, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const [trocando, setTrocando] = useState(false);
   const [aba, setAba] = useState("geral");      // geral | tron | ml | cerebro | agentes
@@ -460,6 +460,8 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               prospect={prospect}
               politicas={politicas}
               caixa={d.cx}
+              conversas={conversas}
+              onGuardarConversa={onGuardarConversa}
               custosML={custosML}
               metaMargem={metaMargem}
               vendedoras={vendedoras}

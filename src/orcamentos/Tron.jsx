@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot, Send, Check, X, Loader, Copy, AlertTriangle, Volume2, VolumeX,
-  CircleDollarSign, Megaphone, Target, ShoppingCart, Users,
+  CircleDollarSign, Megaphone, Target, ShoppingCart, Users, RotateCcw,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import { margemDoItem } from "./MercadoLivre.jsx";
@@ -96,6 +96,29 @@ function falar(texto) {
     window.speechSynthesis.speak(fala);
   });
 }
+
+// Quanto da conversa fica guardado por agente, e quanto vai para o modelo a cada pergunta.
+// Guardar é barato; mandar não é — cada mensagem reenviada é cobrada de novo.
+const LIMITE_GUARDADO = 120;
+const LIMITE_ENVIADO = 30;
+
+// A API exige que a conversa comece com uma fala do Gelvan, e que todo resultado de ação
+// venha depois do pedido que o gerou. Cortar no meio quebra as duas coisas, então o começo
+// é empurrado até a primeira pergunta de verdade.
+function inicioSeguro(mensagens) {
+  let i = 0;
+  while (i < mensagens.length) {
+    const m = mensagens[i];
+    const soResultado = Array.isArray(m.content) && m.content.every((b) => b.type === "tool_result");
+    if (m.role === "user" && !soResultado) break;
+    i += 1;
+  }
+  return i === 0 ? mensagens : mensagens.slice(i);
+}
+
+// O que o modelo recebe: o fim da conversa, cortado numa fronteira que não quebra nada.
+const paraEnviar = (mensagens) =>
+  mensagens.length <= LIMITE_ENVIADO ? mensagens : inicioSeguro(mensagens.slice(-LIMITE_ENVIADO));
 
 const ROTULO_ACAO = {
   criar_cliente: "Cadastrar cliente",
@@ -270,7 +293,7 @@ function contextoML(ml, custos, metaMargem) {
   };
 }
 
-export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, prospect, politicas, caixa, custosML, metaMargem = 35, vendedoras, acoes, onToast }) {
+export default function Tron({ clientes, orcamentos, ordens, cerebro = [], financeiro, mercadoLivre, prospect, politicas, caixa, custosML, metaMargem = 35, vendedoras, acoes, conversas = {}, onGuardarConversa, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [conversa, setConversa] = useState([]); // formato da API: {role, content}
   const [texto, setTexto] = useState("");
@@ -284,6 +307,28 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
     try { return localStorage.getItem(KEY_VOZ) !== "0"; } catch { return true; }
   });
   const fim = useRef(null);
+
+  // A conversa de cada agente fica guardada no banco: fechar o painel não apaga mais nada.
+  // Carrega a do agente escolhido, e guarda a cada troca de mensagem.
+  const [carregada, setCarregada] = useState(null);
+  if (carregada !== agente) {
+    setCarregada(agente);
+    const salva = conversas[agente];
+    setConversa(Array.isArray(salva?.mensagens) ? salva.mensagens : []);
+    setPareceres(salva?.pareceres || {});
+    setEstados(salva?.estados || {});
+  }
+
+  const guardar = (mensagens, novosPareceres, novosEstados) => {
+    if (!onGuardarConversa) return;
+    // Teto por agente: conversa velha demais não ajuda e só pesa no banco.
+    const cortadas = mensagens.length > LIMITE_GUARDADO ? mensagens.slice(-LIMITE_GUARDADO) : mensagens;
+    onGuardarConversa(agente, {
+      mensagens: inicioSeguro(cortadas),
+      pareceres: novosPareceres ?? pareceres,
+      estados: novosEstados ?? estados,
+    });
+  };
 
   const alternarVoz = () => {
     const novo = !voz;
@@ -340,16 +385,19 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       const r = await fetch("/api/tron", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ mensagens, contexto, agente }),
+        body: JSON.stringify({ mensagens: paraEnviar(mensagens), contexto, agente }),
       });
       const resposta = await r.json();
       if (!r.ok) { setErro(resposta.erro || "Falha ao falar com o TRON."); return null; }
       const nova = [...mensagens, { role: "assistant", content: resposta.content }];
       setConversa(nova);
       // Guarda os pareceres dos especialistas para mostrar junto da resposta.
+      let pareceresNovos = pareceres;
       if (resposta.consultas?.length) {
-        setPareceres((p) => ({ ...p, [nova.length - 1]: resposta.consultas }));
+        pareceresNovos = { ...pareceres, [nova.length - 1]: resposta.consultas };
+        setPareceres(pareceresNovos);
       }
+      guardar(nova, pareceresNovos);
       // Fala a resposta assim que ela chega (se a voz estiver ligada).
       if (voz) {
         const texto = (resposta.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
@@ -371,6 +419,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
     setTexto("");
     const mensagens = [...conversa, { role: "user", content: [{ type: "text", text: pergunta }] }];
     setConversa(mensagens);
+    guardar(mensagens);
     await chamar(mensagens);
   };
 
@@ -378,9 +427,11 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
   const confirmar = async (bloco) => {
     setEstados((s) => ({ ...s, [bloco.id]: "fazendo" }));
     let resultado;
+    let estadoFinal = "";
     try {
       resultado = await acoes(bloco.name, bloco.input || {});
       setEstados((s) => ({ ...s, [bloco.id]: "feito" }));
+      estadoFinal = "feito";
       onToast && onToast(resultado.mensagem || "Feito.");
     } catch (err) {
       resultado = { ok: false, mensagem: String(err.message || err) };
@@ -392,6 +443,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       content: [{ type: "tool_result", tool_use_id: bloco.id, content: JSON.stringify(resultado) }],
     }];
     setConversa(mensagens);
+    guardar(mensagens, undefined, { ...estados, [bloco.id]: estadoFinal });
     await chamar(mensagens);
   };
 
@@ -402,6 +454,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       content: [{ type: "tool_result", tool_use_id: bloco.id, content: "O Gelvan não confirmou esta ação." }],
     }];
     setConversa(mensagens);
+    guardar(mensagens, undefined, { ...estados, [bloco.id]: "recusado" });
     await chamar(mensagens);
   };
 
@@ -414,11 +467,20 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
   const sugestoes = perfil.sugestoes;
   const trocar = (novo) => {
     if (novo === agente) return;
-    setAgente(novo);
-    setConversa([]);      // cada agente começa a conversa dele
+    setAgente(novo);      // a conversa guardada do outro agente entra no lugar
+    setErro("");
+    if (TEM_VOZ) window.speechSynthesis.cancel();
+  };
+
+  // Recomeçar do zero com este agente. O que foi feito no sistema continua feito.
+  const limpar = () => {
+    setConversa([]);
+    setPareceres({});
     setEstados({});
     setErro("");
     if (TEM_VOZ) window.speechSynthesis.cancel();
+    onGuardarConversa && onGuardarConversa(agente, { mensagens: [], pareceres: {}, estados: {} });
+    onToast && onToast("Conversa recomeçada.");
   };
 
   return (
@@ -430,6 +492,11 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
           </button>
         ))}
         <span className="tron-papel">{perfil.papel}</span>
+        {conversa.length > 0 && (
+          <button className="tron-limpar" onClick={limpar} title="Recomeçar a conversa com este agente">
+            <RotateCcw size={13} /> Recomeçar
+          </button>
+        )}
       </div>
 
       <div className="tron-conversa">
@@ -508,6 +575,9 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
       <style>{`
 .tron{display:flex;flex-direction:column;gap:10px}
 .tron-agentes{display:flex;align-items:center;gap:7px;flex-wrap:wrap;border-bottom:1px solid rgba(120,180,255,.12);padding-bottom:9px}
+.tron-limpar{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;font-size:10.5px;
+  color:#7e94b4;background:rgba(120,180,255,.07);border:1px solid rgba(120,180,255,.18);border-radius:8px;padding:5px 9px}
+.tron-limpar:hover{color:#b9cbe4;border-color:rgba(120,180,255,.32)}
 .tron-consultas{display:flex;flex-direction:column;gap:6px;background:rgba(120,180,255,.05);
   border:1px solid rgba(120,180,255,.16);border-radius:12px;padding:10px 12px}
 .tron-consultas-tit{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1px;

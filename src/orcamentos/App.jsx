@@ -416,6 +416,7 @@ function App() {
       setCfgSenhaComando(d.config.comando || null);
       setPoliticas(lerPoliticas(d.config.politicas));
       setCaixa(d.caixa || []);
+      setConversas(Object.fromEntries((d.conversas || []).map((c) => [c.id, c])));
       setFechamentos(d.fechamentos || []);
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
@@ -740,6 +741,14 @@ function App() {
     setCliAberto(null);
     setOsAberta({ novo: true, cliente: cli });
   };
+  // Conversas com os agentes: ficam no banco, uma por agente, e voltam ao abrir o painel.
+  const [conversas, setConversas] = useState({});
+  const guardarConversa = (agente, dados) => {
+    const registro = { id: agente, agente, ...dados, atualizadoEm: new Date().toISOString() };
+    setConversas((c) => ({ ...c, [agente]: registro }));
+    salvarRegistros("conversas", [registro]).catch(falhaAoSalvar);
+  };
+
   // CAIXA — o faturamento é o que o Gelvan lança, não o que o app fecha de serviço.
   const [caixa, setCaixa] = useState([]);
   const [fechamentos, setFechamentos] = useState([]);
@@ -1104,6 +1113,8 @@ function App() {
           onSalvarPoliticas={salvarPoliticas}
           caixa={caixa}
           fechamentos={fechamentos}
+          conversas={conversas}
+          onGuardarConversa={guardarConversa}
           onLancarCaixa={lancarCaixa}
           onApagarCaixa={apagarCaixa}
           onFecharMes={fecharMes}
