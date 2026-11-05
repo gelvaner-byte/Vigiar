@@ -362,7 +362,9 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
                 </p>
               ) : (
                 <p className="cmd-dim">
-                  Vem do que você lança na aba CAIXA. Serviço concluído no app não entra aqui sozinho.
+                  {d.cx.lucroLancado > 0
+                    ? `Até agora: ${brl(d.cx.lucroLancado)} de lucro marcado e ${brl(d.cx.mercadoriaParcial)} em mercadoria e custos (${d.cx.margemParcial.toFixed(1)}%). O mês ainda não foi fechado.`
+                    : "Vem do que você lança na aba CAIXA. Serviço concluído no app não entra aqui sozinho."}
                 </p>
               )}
             </Painel>

@@ -350,11 +350,15 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
         caixa: caixa ? {
           mes: caixa.mes,
           vendasDoMes: caixa.vendasDoMes,
+          lucroJaMarcado: caixa.lucroLancado,
+          mercadoriaParcial: caixa.mercadoriaParcial,
+          margemParcial: caixa.margemParcial,
+          diasComLucroMarcado: caixa.diasComLucro,
           diasLancados: caixa.diasLancados,
           seisMeses: caixa.serie,
           fechamentoDoMes: caixa.fechamentoDoMes,
           mesesFechados: caixa.mesesFechados,
-          comoFunciona: "O faturamento é o que o Gelvan lança à mão no caixa, dia a dia. Serviço concluído no app NÃO vira faturamento. No fim do mês ele informa o lucro e o resto é mercadoria e custos.",
+          comoFunciona: "O faturamento é o que o Gelvan lança à mão no caixa, dia a dia. Serviço concluído no app NÃO vira faturamento. Ele pode marcar o lucro já no lançamento do dia; o que está marcado é parcial até o mês ser fechado. Mercadoria e custos é o que entrou menos o lucro.",
         } : null,
       };
       // O TRON precisa dos dois, porque delega; cada especialista recebe o que usa.

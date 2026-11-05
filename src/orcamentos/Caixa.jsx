@@ -27,6 +27,14 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 export const totalDoMes = (caixa, mes) =>
   (caixa || []).filter((l) => mesDe(l.data) === mes).reduce((s, l) => s + num(l.valor), 0);
 
+// Lucro que o Gelvan já marcou no dia. Dia sem lucro informado não conta aqui — e é por isso
+// que "lucro lançado" e "lucro do mês" podem não bater: um é parcial, o outro é o fechado.
+export const lucroDoMes = (caixa, mes) =>
+  (caixa || []).filter((l) => mesDe(l.data) === mes).reduce((s, l) => s + num(l.lucro), 0);
+
+export const diasComLucro = (caixa, mes) =>
+  (caixa || []).filter((l) => mesDe(l.data) === mes && num(l.lucro) > 0).length;
+
 // O que o painel e os agentes leem: nunca sai das ordens de serviço.
 export function resumoCaixa(caixa = [], fechamentos = [], hoje = hojeStr()) {
   const mes = mesDe(hoje);
@@ -39,9 +47,15 @@ export function resumoCaixa(caixa = [], fechamentos = [], hoje = hojeStr()) {
     const chave = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     serie.push({ rotulo: MES_NOME[d.getMonth()].slice(0, 3), chave, valor: totalDoMes(caixa, chave) });
   }
+  const vendas = doMes.reduce((s, l) => s + num(l.valor), 0);
+  const lucro = doMes.reduce((s, l) => s + num(l.lucro), 0);
   return {
     mes,
-    vendasDoMes: doMes.reduce((s, l) => s + num(l.valor), 0),
+    vendasDoMes: vendas,
+    lucroLancado: lucro,
+    mercadoriaParcial: Math.max(0, vendas - lucro),
+    margemParcial: vendas > 0 ? (lucro / vendas) * 100 : 0,
+    diasComLucro: doMes.filter((l) => num(l.lucro) > 0).length,
     diasLancados: new Set(doMes.map((l) => l.data)).size,
     serie,
     fechamentoDoMes: fechado,
@@ -60,6 +74,7 @@ function diaSugerido(mes, hoje) {
 function Lancar({ mesAlvo, hoje, onLancar }) {
   const [data, setData] = useState(() => diaSugerido(mesAlvo, hoje));
   const [valor, setValor] = useState("");
+  const [lucro, setLucro] = useState("");
   const [nota, setNota] = useState("");
 
   // Trocou o mês lá em cima: a data acompanha, senão o lançamento cairia no mês errado.
@@ -71,11 +86,15 @@ function Lancar({ mesAlvo, hoje, onLancar }) {
 
   const foraDoMes = mesDe(data) !== mesAlvo;
 
+  const v = num(valor);
+  const l = num(lucro);
+  const lucroAlto = l > v && v > 0;
+
   const lancar = () => {
-    const v = num(valor);
-    if (v <= 0) return;
-    onLancar({ id: uid(), data, valor: v, nota: nota.trim(), criadoEm: new Date().toISOString() });
+    if (v <= 0 || lucroAlto) return;
+    onLancar({ id: uid(), data, valor: v, lucro: l, nota: nota.trim(), criadoEm: new Date().toISOString() });
     setValor("");
+    setLucro("");
     setNota("");
   };
 
@@ -92,14 +111,33 @@ function Lancar({ mesAlvo, hoje, onLancar }) {
             onChange={(e) => setValor(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && lancar()} />
         </label>
+        <label>
+          <span>Quanto sobrou de lucro</span>
+          <input inputMode="decimal" value={lucro} placeholder="deixe vazio se não souber"
+            onChange={(e) => setLucro(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && lancar()} />
+        </label>
       </div>
+      {v > 0 && l > 0 && !lucroAlto && (
+        <div className="cx-previa">
+          <span>
+            Lucro <b>{brl(l)}</b> · mercadoria e custos <b>{brl(v - l)}</b> · margem{" "}
+            <b>{((l / v) * 100).toFixed(1)}%</b>
+          </span>
+        </div>
+      )}
+      {lucroAlto && (
+        <div className="cx-previa erro">
+          <span>O lucro ({brl(l)}) não pode ser maior do que o que entrou ({brl(v)}).</span>
+        </div>
+      )}
       <label className="cx-nota-campo">
         <span>Do que foi (opcional)</span>
         <input value={nota} placeholder="Ex.: instalação Luana + venda de 2 câmeras"
           onChange={(e) => setNota(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && lancar()} />
       </label>
-      <button className="cx-btn" onClick={lancar} disabled={num(valor) <= 0}>
+      <button className="cx-btn" onClick={lancar} disabled={v <= 0 || lucroAlto}>
         <Plus size={15} /> Lançar venda do dia
       </button>
       {foraDoMes && (
@@ -117,8 +155,11 @@ function Lancar({ mesAlvo, hoje, onLancar }) {
   );
 }
 
-function Fechamento({ mes, vendas, fechamento, onFechar, onReabrir }) {
-  const [lucro, setLucro] = useState(fechamento ? String(fechamento.lucro) : "");
+function Fechamento({ mes, vendas, lucroLancado, diasComLucro, fechamento, onFechar, onReabrir }) {
+  // Se ele já foi marcando o lucro dia a dia, o fechamento já vem com a soma pronta.
+  const [lucro, setLucro] = useState(
+    fechamento ? String(fechamento.lucro) : lucroLancado > 0 ? String(lucroLancado) : "",
+  );
   const l = num(lucro);
   const mercadoria = Math.max(0, vendas - l);
   const margem = vendas > 0 ? (l / vendas) * 100 : 0;
@@ -145,8 +186,11 @@ function Fechamento({ mes, vendas, fechamento, onFechar, onReabrir }) {
     <div className="cx-fechar">
       <header>Fechar {rotuloMes(mes)}</header>
       <p className="cx-dica">
-        Você vendeu <b>{brl(vendas)}</b> neste mês. Diga quanto sobrou de lucro e eu separo
-        o resto como mercadoria e custos.
+        Você vendeu <b>{brl(vendas)}</b> neste mês.
+        {lucroLancado > 0
+          ? <> Já marcou <b>{brl(lucroLancado)}</b> de lucro em {diasComLucro} lançamento(s) — já deixei
+            aqui embaixo. Confira e ajuste se faltou alguma coisa.</>
+          : <> Diga quanto sobrou de lucro e eu separo o resto como mercadoria e custos.</>}
       </p>
       <label>
         <span>Quanto sobrou de lucro</span>
@@ -182,6 +226,8 @@ export default function Caixa({ caixa = [], fechamentos = [], onLancar, onApagar
     [caixa, mesVendo],
   );
   const vendasDoMesVendo = totalDoMes(caixa, mesVendo);
+  const lucroDoMesVendo = lucroDoMes(caixa, mesVendo);
+  const comLucro = diasComLucro(caixa, mesVendo);
   const fechamentoVendo = fechamentos.find((f) => f.id === mesVendo) || null;
 
   // Dois anos para trás ficam sempre abertos, mesmo vazios: é assim que se lança o que
@@ -213,8 +259,9 @@ export default function Caixa({ caixa = [], fechamentos = [], onLancar, onApagar
       <div className="cx-topo">
         <div className="cx-numeros">
           <div><b>{brl(vendasDoMesVendo)}</b><span>vendido no mês</span></div>
+          <div><b className="lucro">{brl(lucroDoMesVendo)}</b><span>lucro marcado</span></div>
+          <div><b className="merc">{brl(Math.max(0, vendasDoMesVendo - lucroDoMesVendo))}</b><span>mercadoria e custos</span></div>
           <div><b>{new Set(doMes.map((l) => l.data)).size}</b><span>dias lançados</span></div>
-          <div><b>{doMes.length}</b><span>lançamentos</span></div>
         </div>
         <select className="cx-select" value={mesVendo} onChange={(e) => setMesVendo(e.target.value)}>
           {meses.map((m) => <option key={m} value={m}>{rotuloMes(m)}</option>)}
@@ -230,7 +277,8 @@ export default function Caixa({ caixa = [], fechamentos = [], onLancar, onApagar
         <Lancar mesAlvo={mesVendo} hoje={hoje} onLancar={onLancar} />
       )}
 
-      <Fechamento mes={mesVendo} vendas={vendasDoMesVendo} fechamento={fechamentoVendo}
+      <Fechamento mes={mesVendo} vendas={vendasDoMesVendo} lucroLancado={lucroDoMesVendo}
+        diasComLucro={comLucro} fechamento={fechamentoVendo}
         onFechar={onFecharMes} onReabrir={onReabrirMes} />
 
       <div className="cx-dias">
@@ -243,16 +291,19 @@ export default function Caixa({ caixa = [], fechamentos = [], onLancar, onApagar
         ) : (
           porDia.map(([dia, itens]) => {
             const total = itens.reduce((s, l) => s + num(l.valor), 0);
+            const lucroDia = itens.reduce((s, l) => s + num(l.lucro), 0);
             return (
               <div key={dia} className="cx-dia">
                 <header>
                   <span>{new Date(`${dia}T12:00`).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" })}</span>
+                  {lucroDia > 0 && <em className="cx-lucro-dia">lucro {brl(lucroDia)}</em>}
                   <b>{brl(total)}</b>
                 </header>
                 <ul>
                   {itens.map((l) => (
                     <li key={l.id}>
                       <span>{l.nota || "venda do dia"}</span>
+                      {num(l.lucro) > 0 && <em className="cx-lucro-item">+{brl(num(l.lucro))}</em>}
                       <b>{brl(num(l.valor))}</b>
                       {!fechamentoVendo && (
                         <button onClick={() => onApagar(l.id)} aria-label="Apagar lançamento"><Trash2 size={13} /></button>
@@ -300,6 +351,10 @@ function Estilo() {
 .cx-numeros{display:flex;gap:18px;flex:1;flex-wrap:wrap}
 .cx-numeros b{display:block;font-size:19px;font-weight:800;font-family:ui-monospace,monospace;color:#fff}
 .cx-numeros span{display:block;font-size:10px;color:#6f87a8;margin-top:2px}
+.cx-numeros b.lucro{color:#22d39a}
+.cx-numeros b.merc{color:#ffb27a}
+.cx-lucro-dia{font-style:normal;font-size:10.5px;color:#22d39a;margin-left:auto;margin-right:10px}
+.cx-lucro-item{font-style:normal;font-size:11px;color:#22d39a;font-family:ui-monospace,monospace}
 .cx input,.cx-select{box-sizing:border-box;border-radius:9px;padding:10px 12px;font-size:13px;font-family:inherit;
   background:rgba(120,180,255,.07);border:1px solid rgba(120,180,255,.22);color:#fff;outline:none}
 .cx input:focus,.cx-select:focus{border-color:#ff8c32}
