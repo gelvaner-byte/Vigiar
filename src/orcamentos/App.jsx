@@ -793,7 +793,7 @@ function App() {
   // Quem o TRON PROSPECT achou. Fica junto dos clientes, mas só o escritório enxerga.
   const [prospect, setProspect] = useState(null);
   const [leadAberto, setLeadAberto] = useState(null);
-  const [reagendando, setReagendando] = useState(null);
+  const [reagendando, setReagendando] = useState(null);   // { doc, tipo: "os" | "visita" }
   const [propostaAberta, setPropostaAberta] = useState(null);
   useEffect(() => {
     if (papel !== "escritorio") return;
@@ -829,6 +829,12 @@ function App() {
   };
 
   const salvarOrc = (orc) => {
+    // Última conferência antes de gravar: visita sem o pedido do cliente não entra na agenda,
+    // venha da tela, do TRON ou de onde for.
+    if (!visitaPodeSerAgendada(orc)) {
+      setToast(MSG_PEDIDO);
+      return null;
+    }
     const existe = orcamentos.some((x) => x.id === orc.id);
     const next = existe
       ? orcamentos.map((x) => (x.id === orc.id ? orc : x))
@@ -980,7 +986,7 @@ function App() {
             onAbrirOs={setOsAberta}
             onToggle={toggleTarefa}
             onShare={setShare}
-            onReagendar={setReagendando}
+            onReagendar={(o, t) => setReagendando({ doc: o, tipo: t || "os" })}
           />
         ) : (
           <>
@@ -1001,7 +1007,7 @@ function App() {
             onAbrirOs={setOsAberta}
             onToggle={toggleTarefa}
             onShare={setShare}
-            onReagendar={setReagendando}
+            onReagendar={(o, t) => setReagendando({ doc: o, tipo: t || "os" })}
           />
         )}
         {view === "clientes" && (
@@ -1055,6 +1061,7 @@ function App() {
           vendedorPadrao={vendAtiva ? vendAtiva.nome : ""}
           politicas={politicas}
           proposta={propostaDe(orcAberto.id)}
+          onReagendarVisita={(o) => { setOrcAberto(null); setReagendando({ doc: o, tipo: "visita" }); }}
           onProposta={(o) => { setOrcAberto(null); setPropostaAberta(o); }}
           onSalvar={salvarOrc}
           onExcluir={excluirOrc}
@@ -1077,7 +1084,7 @@ function App() {
           onSalvar={salvarOs}
           onExcluir={excluirOs}
           onShare={setShare}
-          onReagendar={(o) => { setOsAberta(null); setReagendando(o); }}
+          onReagendar={(o) => { setOsAberta(null); setReagendando({ doc: o, tipo: "os" }); }}
           onToast={setToast}
           onFechar={() => setOsAberta(null)}
         />
@@ -1114,12 +1121,17 @@ function App() {
       )}
       {reagendando && (
         <SheetReagendar
-          os={reagendando}
+          os={reagendando.doc}
+          tipo={reagendando.tipo}
           ordens={ordens}
+          orcamentos={orcamentos}
           tecnicos={tecnicos}
           papel={papel}
           quemSou={meuNome || meuEmail}
-          onSalvar={async (nova) => { updOs(ordens.map((x) => (x.id === nova.id ? nova : x))); }}
+          onSalvar={async (nova) => {
+            if (reagendando.tipo === "visita") updOrc(orcamentos.map((x) => (x.id === nova.id ? nova : x)));
+            else updOs(ordens.map((x) => (x.id === nova.id ? nova : x)));
+          }}
           onShare={setShare}
           onToast={setToast}
           onFechar={() => setReagendando(null)}
@@ -1323,6 +1335,13 @@ function compromissosPorDia(ordens, orcamentos) {
 }
 
 // Procura serviço/visita que ocupe o mesmo horário. Devolve o conflito ou null.
+// A regra do pedido do cliente mora aqui e só aqui: a tela e a gravação chamam a mesma
+// função, para não existir o caso de passar num lugar e falhar no outro.
+export const MSG_PEDIDO = "Informe o que o cliente precisa para agendar a visita.";
+export const pedidoPreenchido = (orc) => String(orc?.descricaoServico ?? "").trim().length > 0;
+export const visitaPodeSerAgendada = (orc) =>
+  orc?.status !== "agendado" || pedidoPreenchido(orc);
+
 export function acharConflito({ ordens = [], orcamentos = [], data, hora, duracao, ignorarOsId, ignorarOrcId, soServicos = false }) {
   if (!data || !hora) return null;
   const ini = horaParaNum(hora);
@@ -2038,9 +2057,9 @@ function Tarefa({ x, dataExtra, onAbrir, onToggle, onReagendar }) {
           </span>
         )}
       </div>
-      {!visita && !feito && onReagendar && (
-        <button className="vg-tarefa-reag" title="Reagendar este serviço"
-          onClick={(e) => { e.stopPropagation(); onReagendar(it); }}>
+      {!feito && onReagendar && (
+        <button className="vg-tarefa-reag" title={visita ? "Reagendar esta visita" : "Reagendar este serviço"}
+          onClick={(e) => { e.stopPropagation(); onReagendar(it, visita ? "visita" : "os"); }}>
           <CalendarClock size={15} />
         </button>
       )}
@@ -2274,7 +2293,7 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
 }
 
 /* ============ sheet de orçamento ============ */
-function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", politicas, proposta, onSalvar, onExcluir, onGerarOS, onShare, onPreview, onProposta, onToast, onFechar }) {
+function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", politicas, proposta, onSalvar, onExcluir, onGerarOS, onShare, onPreview, onProposta, onReagendarVisita, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [o, setO] = useState(() =>
@@ -2288,6 +2307,13 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
       : { ...inicial, itens: inicial.itens ? [...inicial.itens] : [] }
   );
   const [prazo, setPrazo] = useState(addDaysStr(todayStr(), 2));
+  const [erroPedido, setErroPedido] = useState(false);
+  // Visita nova ou ainda por fazer é só visita: nada de item, valor nem pagamento na tela.
+  // Depois que ela é marcada como realizada, o comercial abre com "Montar orçamento".
+  const visitaPendente = !tecnico && (novo || o.status === "agendado");
+  const [montando, setMontando] = useState(false);
+  const temRascunho = (o.itens || []).length > 0 || !!o.formaPagamento;
+  const modoComercial = !visitaPendente && (montando || temRascunho || !["agendado"].includes(o.status));
   // Sugestões de horário livre para executar o serviço (seg-sex, 8h-18h).
   const duracaoServico = Number(inicial.duracaoServico) || DURACAO_PADRAO;
   const sugestoes = useMemo(
@@ -2376,6 +2402,12 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
   const tentarSalvar = () => {
     if (faltaCliente()) return;
     if (!o.endereco || !o.endereco.trim()) { setErroEnd(true); onToast && onToast("O endereço é obrigatório."); return; }
+    // Visita sem o pedido do cliente não serve para nada: o técnico chega sem saber o que ver.
+    if (!pedidoPreenchido(o)) {
+      setErroPedido(true);
+      onToast && onToast(MSG_PEDIDO);
+      return;   // o resto do formulário fica como está, para corrigir e tentar de novo
+    }
     onSalvar(o);
   };
   const abrirPreview = () => {
@@ -2431,9 +2463,20 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
         <input className="vg-in" value={o.bairro || ""} onChange={(e) => set("bairro", e.target.value)} placeholder="Ex.: Santa Amélia" />
       </Campo>
       <EnderecoMapa endereco={o.endereco} bairro={o.bairro} />
-      <Campo label="O que o cliente quer">
-        <input className="vg-in" value={o.descricaoServico} onChange={(e) => set("descricaoServico", e.target.value)} placeholder="Ex.: 4 câmeras + alarme + portão" />
+      <Campo label="O que o cliente precisa *">
+        <input className={"vg-in" + (erroPedido ? " vg-in-erro" : "")} value={o.descricaoServico}
+          onChange={(e) => { set("descricaoServico", e.target.value); if (erroPedido) setErroPedido(false); }}
+          placeholder="Ex.: Instalar câmeras na entrada e na garagem" />
+        {erroPedido && <span className="vg-erro">{MSG_PEDIDO}</span>}
       </Campo>
+      {!tecnico && (
+        <Campo label="Observações da visita">
+          <textarea className="vg-in vg-ta" rows={2} value={o.observacoesVisita || ""}
+            onChange={(e) => set("observacoesVisita", e.target.value)}
+            placeholder="Como entrar, com quem falar, cuidado com cachorro, levar escada…" />
+          <span className="vg-dica">Fica só para a equipe. Não vai para a proposta do cliente.</span>
+        </Campo>
+      )}
       {tecnico ? (
         <>
           <Campo label="Levantamento da visita — o que precisa ser feito">
@@ -2498,6 +2541,34 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
         </div>
       )}
 
+      {visitaPendente && (
+        <div className="vg-etapa">
+          <CalendarClock size={16} />
+          <span>
+            <b>Etapa 1 de 3 — visita.</b> A primeira visita da Vigiar não é cobrada. Aqui você só
+            agenda e registra o que o cliente precisa. Valor e itens entram depois que a visita
+            for feita.
+          </span>
+        </div>
+      )}
+
+      {!visitaPendente && !modoComercial && (
+        <div className="vg-etapa">
+          <FileText size={16} />
+          <span>
+            <b>Visita realizada.</b> Agora dá para montar o orçamento com itens, valores e
+            forma de pagamento.
+          </span>
+        </div>
+      )}
+
+      {!visitaPendente && !modoComercial && (
+        <button className="vg-btn vg-btn-primary vg-full" onClick={() => setMontando(true)}>
+          <FileText size={16} /> Montar orçamento
+        </button>
+      )}
+
+      {modoComercial && (<>
       {/* itens */}
       <div className="vg-itens-head">
         <span>Itens do orçamento</span>
@@ -2573,17 +2644,28 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
           {o.tipoGarantia ? "Escolhido por você." : "Sugerido pelo que está na lista de itens."} {textoGarantia(o, politicas)}
         </span>
       </Campo>
+      </>)}
 
       {/* ações por status */}
       {!novo && (
         <div className="vg-acoes">
           {o.status === "agendado" && (
             <div className="vg-acao-box">
-              <label className="vg-acao-label">Marcar visita como feita e definir prazo para enviar o orçamento:</label>
+              <label className="vg-acao-label">A visita</label>
               <div className="vg-acao-row">
-                <input type="date" className="vg-in" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
-                <button className="vg-btn vg-btn-amber" onClick={marcarVisitaFeita}><Check size={16} /> Visita feita</button>
+                <button className="vg-btn vg-btn-ghost" onClick={() => onReagendarVisita(o)}>
+                  <CalendarClock size={16} /> Reagendar
+                </button>
+                <button className="vg-btn vg-btn-amber" onClick={marcarVisitaFeita}>
+                  <Check size={16} /> Marcar visita como realizada
+                </button>
               </div>
+              <label className="vg-acao-label" style={{ marginTop: 10 }}>Prazo para enviar o orçamento</label>
+              <input type="date" className="vg-in" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+              <span className="vg-dica">
+                Reagendar mantém a visita pendente. Montar o orçamento só libera depois de marcada
+                como realizada.
+              </span>
             </div>
           )}
           {o.status === "a_enviar" && (
@@ -2697,10 +2779,19 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
 /* ============ reagendar atendimento ============ */
 // Move um serviço de horário. O horário antigo fica livre no mesmo instante, porque a agenda
 // é montada a partir da própria OS: mudou a data nela, mudou na agenda.
-function SheetReagendar({ os, ordens, tecnicos = [], papel = "escritorio", quemSou = "", onSalvar, onShare, onToast, onFechar }) {
-  const [data, setData] = useState(os.dataServico || todayStr());
-  const [hora, setHora] = useState(os.horaServico || "");
-  const [duracao, setDuracao] = useState(os.duracaoHoras ?? DURACAO_PADRAO);
+function SheetReagendar({ os, ordens, orcamentos = [], tipo = "os", tecnicos = [], papel = "escritorio", quemSou = "", onSalvar, onShare, onToast, onFechar }) {
+  // Visita de orçamento e ordem de serviço guardam a data em campos diferentes, mas a
+  // conversa com o cliente e o histórico são iguais.
+  const visita = tipo === "visita";
+  const campoData = visita ? "dataVisita" : "dataServico";
+  const campoHora = visita ? "horaVisita" : "horaServico";
+  const campoDur = visita ? "duracaoVisita" : "duracaoHoras";
+  const padraoDur = visita ? DURACAO_VISITA : DURACAO_PADRAO;
+  const rotulo = visita ? "visita" : "serviço";
+
+  const [data, setData] = useState(os[campoData] || todayStr());
+  const [hora, setHora] = useState(os[campoHora] || "");
+  const [duracao, setDuracao] = useState(os[campoDur] ?? padraoDur);
   const [tecnicoEmail, setTecnicoEmail] = useState(os.tecnicoEmail || "");
   const [motivo, setMotivo] = useState("");
   const [contarMotivo, setContarMotivo] = useState(false);
@@ -2710,11 +2801,17 @@ function SheetReagendar({ os, ordens, tecnicos = [], papel = "escritorio", quemS
   const tecnicoAtual = tecnicos.find((t) => String(t.email).toLowerCase() === String(os.tecnicoEmail || "").toLowerCase());
   const tecnicoNovo = tecnicos.find((t) => String(t.email).toLowerCase() === String(tecnicoEmail).toLowerCase());
   const mudouTecnico = String(tecnicoEmail || "").toLowerCase() !== String(os.tecnicoEmail || "").toLowerCase();
-  const mudouHorario = data !== os.dataServico || hora !== (os.horaServico || "") || duracao !== (os.duracaoHoras ?? DURACAO_PADRAO);
+  const mudouHorario = data !== os[campoData] || hora !== (os[campoHora] || "") || duracao !== (os[campoDur] ?? padraoDur);
 
+  // Visita disputa agenda com serviço e com outra visita; serviço só com serviço.
   const conflito = useMemo(
-    () => acharConflito({ ordens, data, hora, duracao, ignorarOsId: os.id, soServicos: true }),
-    [ordens, data, hora, duracao, os.id],
+    () => acharConflito({
+      ordens, orcamentos: visita ? orcamentos : [], data, hora, duracao,
+      ignorarOsId: visita ? undefined : os.id,
+      ignorarOrcId: visita ? os.id : undefined,
+      soServicos: !visita,
+    }),
+    [ordens, orcamentos, data, hora, duracao, os.id, visita],
   );
 
   const mensagem = useMemo(() => {
@@ -2725,21 +2822,25 @@ function SheetReagendar({ os, ordens, tecnicos = [], papel = "escritorio", quemS
     if (contarMotivo && motivo.trim()) t += `\nMotivo: ${motivo.trim()}\n`;
     t += `\nSe esse horário não for bom, é só responder que a gente ajusta.`;
     return t;
-  }, [data, hora, os.cliente, os.descricao, motivo, contarMotivo]);
+  }, [data, hora, os.cliente, os.descricao, os.descricaoServico, motivo, contarMotivo, visita]);
 
   const confirmar = async () => {
     if (!data) { onToast && onToast("Escolha a nova data."); return; }
     if (!mudouHorario && !mudouTecnico) { onToast && onToast("Nada mudou ainda."); return; }
     // Confere de novo na hora de salvar: alguém da equipe pode ter marcado algo enquanto
     // esta tela estava aberta.
-    const agora = acharConflito({ ordens, data, hora, duracao, ignorarOsId: os.id, soServicos: true });
+    const agora = acharConflito({
+      ordens, orcamentos: visita ? orcamentos : [], data, hora, duracao,
+      ignorarOsId: visita ? undefined : os.id, ignorarOrcId: visita ? os.id : undefined,
+      soServicos: !visita,
+    });
     if (agora) { onToast && onToast(`Horário ocupado: ${textoConflito(agora)}`); return; }
 
     setSalvando(true);
     try {
       const registro = {
         em: new Date().toISOString(),
-        deData: os.dataServico, deHora: os.horaServico || "",
+        deData: os[campoData], deHora: os[campoHora] || "",
         paraData: data, paraHora: hora || "",
         deTecnico: tecnicoAtual ? tecnicoAtual.nome : (os.tecnicoNome || ""),
         paraTecnico: tecnicoNovo ? tecnicoNovo.nome : "",
@@ -2748,13 +2849,13 @@ function SheetReagendar({ os, ordens, tecnicos = [], papel = "escritorio", quemS
       };
       await onSalvar({
         ...os,
-        dataServico: data,
-        horaServico: hora,
-        duracaoHoras: duracao,
+        [campoData]: data,
+        [campoHora]: hora,
+        [campoDur]: duracao,
         ...(podeTrocarTecnico ? { tecnicoEmail, tecnicoNome: tecnicoNovo ? tecnicoNovo.nome : "" } : {}),
         reagendamentos: [...(Array.isArray(os.reagendamentos) ? os.reagendamentos : []), registro],
       });
-      onToast && onToast(`OS Nº ${os.numero} remarcada para ${fmtDate(data)}${hora ? ` às ${hora}` : ""}.`);
+      onToast && onToast(`${visita ? "Visita" : "OS"} Nº ${os.numero} remarcada para ${fmtDate(data)}${hora ? ` às ${hora}` : ""}.`);
       onFechar();
     } finally {
       setSalvando(false);
@@ -2762,27 +2863,27 @@ function SheetReagendar({ os, ordens, tecnicos = [], papel = "escritorio", quemS
   };
 
   return (
-    <Sheet onFechar={onFechar} titulo={`Reagendar OS Nº ${os.numero}`}>
+    <Sheet onFechar={onFechar} titulo={`Reagendar ${visita ? "visita" : "OS"} Nº ${os.numero}`}>
       <div className="vg-reag-atual">
         <span className="vg-reag-rot">Como está hoje</span>
         <b>{os.cliente}</b>
-        <em>{os.descricao || "Serviço"}</em>
+        <em>{(visita ? os.descricaoServico : os.descricao) || (visita ? "Visita de orçamento" : "Serviço")}</em>
         <span>
-          <CalendarClock size={13} /> {fmtDate(os.dataServico)}{os.horaServico ? ` às ${os.horaServico}` : " (sem horário)"}
-          {" · "}{os.duracaoHoras ?? DURACAO_PADRAO}h
+          <CalendarClock size={13} /> {fmtDate(os[campoData])}{os[campoHora] ? ` às ${os[campoHora]}` : " (sem horário)"}
+          {" · "}{os[campoDur] ?? padraoDur}h
         </span>
         <span><Wrench size={13} /> {tecnicoAtual ? tecnicoAtual.nome : (os.tecnicoNome || "sem técnico definido")}</span>
       </div>
 
       <div className="vg-row2">
-        <Campo label="Nova data" icon={<CalendarClock size={14} />}>
+        <Campo label={`Nova data da ${rotulo}`} icon={<CalendarClock size={14} />}>
           <input type="date" className={"vg-in" + (conflito ? " vg-in-erro" : "")} value={data} onChange={(e) => setData(e.target.value)} />
         </Campo>
         <Campo label="Novo horário" icon={<Clock size={14} />}>
           <input type="time" className={"vg-in" + (conflito ? " vg-in-erro" : "")} value={hora} onChange={(e) => setHora(e.target.value)} />
         </Campo>
       </div>
-      <Campo label="Tempo do serviço">
+      <Campo label={visita ? "Tempo da visita" : "Tempo do serviço"}>
         <select className="vg-in" value={duracao} onChange={(e) => setDuracao(Number(e.target.value))}>
           {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
@@ -3872,6 +3973,9 @@ function Estilos() {
 .vg-nota header em{font-style:normal}
 .vg-nota header button{margin-left:auto;cursor:pointer;border:none;background:none;color:#c08070;padding:2px}
 .vg-nota p{margin:0;font-size:13px;line-height:1.55;color:#5a3a20;white-space:pre-wrap}
+.vg-etapa{display:flex;align-items:flex-start;gap:9px;margin:14px 0;padding:11px 13px;border-radius:11px;
+  background:#fff6ee;border:1px solid #f0d8c0;color:#6a4a28;font-size:12.5px;line-height:1.5}
+.vg-etapa b{color:#5a3a20}
 .vg-retro{display:flex;align-items:flex-start;gap:9px;margin-bottom:14px;padding:11px 13px;border-radius:11px;
   background:#eef6ff;border:1px solid #c5ddf5;color:#2a5580;font-size:12.5px;line-height:1.5}
 .vg-largo{width:100%;margin-top:8px}
