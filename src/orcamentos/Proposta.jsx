@@ -1,11 +1,16 @@
 import React, { useState } from "react";
 import {
-  FileText, Check, X, Share2, Download, RefreshCw, AlertTriangle, Pencil, Sparkles,
+  FileText, Check, X, Share2, Download, RefreshCw, AlertTriangle, Pencil, Sparkles, ImagePlus,
 } from "lucide-react";
 import { supabase } from "./supabaseOrc";
 import {
   montarProposta, pendenciasDaProposta, propostaDesatualizada, propostaEmTexto, textoPadrao,
 } from "./proposta.js";
+import {
+  MAX_FOTOS, deArquivo, deEndereco, fotosDoItem, fotosDoLocal, legendaCompleta, mover,
+  pesoDasFotos, pesoLegivel, sugerirDosAnuncios, uid,
+} from "./imagens.js";
+import { buscarDadosML } from "./MercadoLivre.jsx";
 
 const brl = (v) => (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmt = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR") : "—");
@@ -48,11 +53,149 @@ function Secao({ titulo, children }) {
   );
 }
 
+// Uma foto na proposta: imagem e legenda andam juntas, inclusive na quebra de página.
+function Foto({ img, grande }) {
+  const leg = legendaCompleta(img);
+  return (
+    <figure className={"pp-foto" + (grande ? " g" : "")}>
+      <img src={img.src} alt={img.legenda || "Foto da proposta"} />
+      {leg && <figcaption>{leg}</figcaption>}
+    </figure>
+  );
+}
+
+// Painel de edição das fotos. Só aparece no modo editar e nunca sai no PDF.
+function Fotos({ imagens, itens, sugestoes, ocupado, onAdicionar, onUsarSugestao, onMudar, onMover, onRemover }) {
+  const arquivo = (e) => {
+    const lista = [...(e.target.files || [])];
+    e.target.value = "";
+    if (lista.length) onAdicionar(lista);
+  };
+
+  return (
+    <div className="pp-fotos-ed">
+      <div className="pp-fotos-topo">
+        <label className="pp-btn-foto">
+          <ImagePlus size={15} /> Adicionar imagens
+          <input type="file" accept="image/*" multiple onChange={arquivo} hidden />
+        </label>
+        <span className="pp-peso">
+          {imagens.length}/{MAX_FOTOS} fotos
+          {imagens.length > 0 ? ` · ${pesoLegivel(pesoDasFotos(imagens))}` : ""}
+        </span>
+      </div>
+      {ocupado && <p className="pp-dica">Preparando as fotos…</p>}
+
+      {sugestoes.length > 0 && (
+        <div className="pp-sugestoes">
+          <h4>Fotos dos produtos do orçamento</h4>
+          <p className="pp-dica">Achei estas no seu cadastro do Mercado Livre, pelos itens que você listou.</p>
+          <ul>
+            {sugestoes.map((s) => (
+              <li key={`${s.itemIndex}-${s.url}`}>
+                <img src={s.url} alt="" />
+                <div>
+                  <b>{s.itemDescricao}</b>
+                  <em>{s.titulo}</em>
+                </div>
+                <button onClick={() => onUsarSugestao(s)} disabled={ocupado}>Usar</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {imagens.length === 0 ? (
+        <p className="pp-dica">
+          Sem fotos, a proposta sai só com texto. Foto do modelo do equipamento e do lugar
+          onde vai ser instalado ajudam o síndico a entender o que está contratando.
+        </p>
+      ) : (
+        <ul className="pp-fotos-lista">
+          {imagens.map((img, i) => (
+            <li key={img.id}>
+              <img src={img.src} alt="" />
+              <div className="pp-foto-campos">
+                <input value={img.legenda} placeholder="Legenda da foto"
+                  onChange={(e) => onMudar(img.id, { legenda: e.target.value })} />
+                <select value={img.tipo === "produto" ? `item:${img.itemIndex}` : "local"}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    onMudar(img.id, v === "local"
+                      ? { tipo: "local", itemIndex: null }
+                      : { tipo: "produto", itemIndex: Number(v.split(":")[1]) });
+                  }}>
+                  <option value="local">Fotos do local e da instalação</option>
+                  {itens.map((it, k) => (
+                    <option key={k} value={`item:${k}`}>Junto do item: {it.descricao || `item ${k + 1}`}</option>
+                  ))}
+                </select>
+                <label className="pp-ilustra">
+                  <input type="checkbox" checked={!!img.ilustrativa}
+                    onChange={(e) => onMudar(img.id, { ilustrativa: e.target.checked })} />
+                  <span>Imagem ilustrativa</span>
+                </label>
+              </div>
+              <div className="pp-foto-botoes">
+                <button onClick={() => onMover(img.id, -1)} disabled={i === 0} aria-label="Subir">↑</button>
+                <button onClick={() => onMover(img.id, 1)} disabled={i === imagens.length - 1} aria-label="Descer">↓</button>
+                <button className="rem" onClick={() => onRemover(img.id)} aria-label="Remover"><X size={13} /></button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function Proposta({ orc, politicas, proposta, quemSou, onSalvar, onShare, onToast, onFechar }) {
   const [p, setP] = useState(proposta || null);
   const [gerando, setGerando] = useState(!proposta);
   const [aviso, setAviso] = useState("");
   const [editando, setEditando] = useState(false);
+  const [sugestoes, setSugestoes] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+
+  const imagens = (p && p.imagens) || [];
+  const gravarImagens = (lista) => {
+    const nova = { ...p, imagens: lista };
+    setP(nova);
+    onSalvar(nova, { silencioso: true });
+  };
+
+  const adicionar = async (arquivos) => {
+    const cabe = MAX_FOTOS - imagens.length;
+    if (cabe <= 0) { onToast && onToast(`A proposta já tem ${MAX_FOTOS} fotos.`); return; }
+    setOcupado(true);
+    const novas = [];
+    for (const f of arquivos.slice(0, cabe)) {
+      try {
+        const r = await deArquivo(f);
+        novas.push({ id: uid(), src: r.src, legenda: "", tipo: "local", itemIndex: null,
+          ilustrativa: false, origem: "envio", largura: r.largura, altura: r.altura });
+      } catch (e) { onToast && onToast(String(e.message || e)); }
+    }
+    if (arquivos.length > cabe) onToast && onToast(`Entraram ${cabe}: o limite é ${MAX_FOTOS} fotos.`);
+    if (novas.length) gravarImagens([...imagens, ...novas]);
+    setOcupado(false);
+  };
+
+  const usarSugestao = async (sug) => {
+    if (imagens.length >= MAX_FOTOS) { onToast && onToast(`A proposta já tem ${MAX_FOTOS} fotos.`); return; }
+    setOcupado(true);
+    try {
+      const r = await deEndereco(sug.url);
+      gravarImagens([...imagens, {
+        id: uid(), src: r.src, legenda: sug.itemDescricao, tipo: "produto", itemIndex: sug.itemIndex,
+        ilustrativa: false, origem: "anuncio", largura: r.largura, altura: r.altura,
+      }]);
+    } catch (e) {
+      onToast && onToast(String(e.message || e));
+    } finally {
+      setOcupado(false);
+    }
+  };
 
   const pendencias = pendenciasDaProposta(orc, politicas);
   const velha = p && propostaDesatualizada(orc, p);
@@ -70,7 +213,14 @@ export default function Proposta({ orc, politicas, proposta, quemSou, onSalvar, 
 
   // Primeira abertura sem proposta: já gera.
   const [iniciou, setIniciou] = useState(false);
-  if (!iniciou) { setIniciou(true); if (!proposta) gerar(); }
+  if (!iniciou) {
+    setIniciou(true);
+    if (!proposta) gerar();
+    // Fotos dos produtos: vêm do cadastro do Mercado Livre. Sem conexão, segue sem sugestão.
+    buscarDadosML()
+      .then((ml) => setSugestoes(sugerirDosAnuncios(orc, ml?.anuncios?.lista || [])))
+      .catch(() => {});
+  }
 
   const setTexto = (campo, valor) => {
     const nova = { ...p, texto: { ...p.texto, [campo]: valor } };
@@ -144,6 +294,20 @@ export default function Proposta({ orc, politicas, proposta, quemSou, onSalvar, 
           </div>
         )}
 
+        {editando && (
+          <Fotos
+            imagens={imagens}
+            itens={c.itens}
+            sugestoes={sugestoes}
+            ocupado={ocupado}
+            onAdicionar={adicionar}
+            onUsarSugestao={usarSugestao}
+            onMudar={(id, campos) => gravarImagens(imagens.map((i) => (i.id === id ? { ...i, ...campos } : i)))}
+            onMover={(id, passo) => gravarImagens(mover(imagens, id, passo))}
+            onRemover={(id) => gravarImagens(imagens.filter((i) => i.id !== id))}
+          />
+        )}
+
         <div className="pp-folha" id="pp-folha">
           <div className="pp-cab">
             <div className="pp-marca">
@@ -204,21 +368,42 @@ export default function Proposta({ orc, politicas, proposta, quemSou, onSalvar, 
 
           <Secao titulo="Investimento">
             {c.somenteTotal ? (
-              <p className="pp-so-total">Valor fechado para o serviço descrito acima.</p>
+              <>
+                <p className="pp-so-total">Valor fechado para o serviço descrito acima.</p>
+                {imagens.some((i) => i.tipo === "produto") && (
+                  <div className="pp-fotos-grade">
+                    {imagens.filter((i) => i.tipo === "produto").map((f) => <Foto key={f.id} img={f} />)}
+                  </div>
+                )}
+              </>
             ) : (
               <table className="pp-tab">
                 <thead>
                   <tr><th>Item</th><th>Qtd</th><th>Unitário</th><th>Total</th></tr>
                 </thead>
                 <tbody>
-                  {c.itens.map((i, k) => (
-                    <tr key={k}>
-                      <td>{i.descricao}{i.doCliente ? " (material do cliente)" : ""}</td>
-                      <td>{i.qtd} {i.unidade}</td>
-                      <td>{brl(i.unitario)}</td>
-                      <td>{brl(i.total)}</td>
-                    </tr>
-                  ))}
+                  {c.itens.map((i, k) => {
+                    const fotos = fotosDoItem(imagens, k);
+                    return (
+                      <React.Fragment key={k}>
+                        <tr>
+                          <td>{i.descricao}{i.doCliente ? " (material do cliente)" : ""}</td>
+                          <td>{i.qtd} {i.unidade}</td>
+                          <td>{brl(i.unitario)}</td>
+                          <td>{brl(i.total)}</td>
+                        </tr>
+                        {fotos.length > 0 && (
+                          <tr className="pp-linha-foto">
+                            <td colSpan={4}>
+                              <div className="pp-fotos-item">
+                                {fotos.map((f) => <Foto key={f.id} img={f} />)}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                   {c.desconto > 0 && (
                     <tr className="pp-desc"><td colSpan={3}>Desconto</td><td>-{brl(c.desconto)}</td></tr>
                   )}
@@ -227,6 +412,14 @@ export default function Proposta({ orc, politicas, proposta, quemSou, onSalvar, 
             )}
             <div className="pp-total"><span>Total</span><b>{brl(c.total)}</b></div>
           </Secao>
+
+          {fotosDoLocal(imagens).length > 0 && (
+            <Secao titulo="Fotos do local e da instalação">
+              <div className="pp-fotos-grade">
+                {fotosDoLocal(imagens).map((f) => <Foto key={f.id} img={f} grande={fotosDoLocal(imagens).length === 1} />)}
+              </div>
+            </Secao>
+          )}
 
           <Secao titulo="Condições">
             <ul className="pp-cond">
@@ -333,6 +526,54 @@ function Estilo() {
 .pp-rodape{margin-top:26px;padding-top:12px;border-top:1px solid #e8d5c0;text-align:center;
   font-size:10.5px;color:#9a7b60}
 
+/* fotos na folha */
+.pp-foto{margin:0;break-inside:avoid;page-break-inside:avoid}
+.pp-foto img{display:block;width:100%;height:auto;border-radius:6px;border:1px solid #e8d5c0;
+  background:#fff;object-fit:contain}
+.pp-foto figcaption{margin-top:5px;font-size:10.5px;line-height:1.4;color:#6a5340}
+.pp-foto.g img{max-height:420px;object-fit:contain}
+.pp-fotos-item{display:flex;gap:10px;flex-wrap:wrap;padding:4px 0 10px}
+.pp-fotos-item .pp-foto{width:150px}
+.pp-linha-foto td{border-bottom:1px solid #f3e7da;padding-top:0}
+.pp-fotos-grade{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.pp-fotos-grade .pp-foto img{max-height:260px;object-fit:cover}
+.pp-fotos-grade .pp-foto.g{grid-column:1/-1}
+.pp-fotos-grade .pp-foto.g img{object-fit:contain}
+
+/* painel de edição das fotos — nunca sai no PDF */
+.pp-fotos-ed{max-width:780px;margin:0 auto 14px;background:#fff;border:1px solid #f0d8c0;
+  border-radius:12px;padding:14px}
+.pp-fotos-topo{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pp-btn-foto{display:inline-flex;align-items:center;gap:7px;cursor:pointer;border-radius:9px;
+  padding:10px 14px;font-size:12.5px;font-weight:700;background:#e2640a;color:#fff}
+.pp-peso{font-size:11.5px;color:#9a7b60}
+.pp-dica{margin:8px 0 0;font-size:11.5px;line-height:1.5;color:#9a7b60}
+.pp-sugestoes{margin-top:14px;padding-top:12px;border-top:1px solid #f3e7da}
+.pp-sugestoes h4{margin:0;font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#e2640a}
+.pp-sugestoes ul{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.pp-sugestoes li{display:flex;align-items:center;gap:10px}
+.pp-sugestoes li img{width:44px;height:44px;flex-shrink:0;border-radius:8px;object-fit:cover;border:1px solid #e8d5c0}
+.pp-sugestoes li div{flex:1;min-width:0}
+.pp-sugestoes li b{display:block;font-size:12.5px;color:#5a3a20}
+.pp-sugestoes li em{font-style:normal;font-size:11px;color:#9a7b60;display:block;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.pp-sugestoes li button{flex-shrink:0;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:700;
+  color:#e2640a;background:#fff4e8;border:1px solid #f0c9a0;border-radius:8px;padding:7px 12px}
+.pp-fotos-lista{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.pp-fotos-lista li{display:flex;gap:10px;align-items:flex-start;padding-top:10px;border-top:1px solid #f3e7da}
+.pp-fotos-lista li > img{width:72px;height:72px;flex-shrink:0;border-radius:8px;object-fit:cover;border:1px solid #e8d5c0}
+.pp-foto-campos{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.pp-foto-campos input[type=text],.pp-foto-campos input:not([type]),.pp-foto-campos select{
+  width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;padding:8px 10px;
+  border-radius:8px;border:1px solid #f0d8c0;background:#fff;color:#2f2318}
+.pp-ilustra{display:flex;align-items:center;gap:7px;font-size:12px;color:#5a3a20;cursor:pointer}
+.pp-ilustra input{width:16px;height:16px;accent-color:#e2640a}
+.pp-foto-botoes{display:flex;flex-direction:column;gap:5px;flex-shrink:0}
+.pp-foto-botoes button{width:30px;height:28px;display:grid;place-items:center;cursor:pointer;
+  border-radius:7px;font-family:inherit;color:#8a6a4a;background:#fff;border:1px solid #f0d8c0}
+.pp-foto-botoes button:disabled{opacity:.35;cursor:default}
+.pp-foto-botoes .rem{color:#9a2b2b;background:#fdecec;border-color:#f0b4b4}
+
 .pp-acoes{display:flex;gap:9px;padding:12px 16px;background:#fff;border-top:1px solid #f0d8c0}
 .pp-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;
   border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;font-family:inherit;
@@ -346,7 +587,10 @@ function Estilo() {
   .pp-folha,.pp-folha *{visibility:visible!important}
   .pp-tela{position:static!important;background:#fff!important}
   .pp-rolo{overflow:visible!important;padding:0!important}
-  .pp-topo,.pp-acoes,.pp-alerta,.pp-enviada{display:none!important}
+  .pp-topo,.pp-acoes,.pp-alerta,.pp-enviada,.pp-fotos-ed{display:none!important}
+  .pp-foto,.pp-foto img,.pp-foto figcaption{break-inside:avoid!important;page-break-inside:avoid!important}
+  .pp-fotos-grade{grid-template-columns:repeat(2,1fr)}
+  .pp-linha-foto{break-inside:avoid!important}
   .pp-folha{position:absolute;left:0;top:0;width:100%;max-width:none;border:none;padding:0;border-radius:0}
   .pp-secao,.pp-tab tr,.pp-cab{break-inside:avoid}
   @page{size:A4;margin:14mm}
