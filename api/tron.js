@@ -4,6 +4,7 @@
 // O TRON coordena especialistas (ver personas.js): ele pode consultá-los no meio da resposta.
 
 import { PERSONAS, ESPECIALISTAS } from './_personas.js'
+import { redigirProposta } from './_proposta.js'
 
 const MODELO = process.env.TRON_MODELO || 'claude-sonnet-5-5'
 const WORKSPACE = process.env.ANTHROPIC_WORKSPACE_ID || ''
@@ -291,6 +292,21 @@ const soTexto = (content) => (content || []).filter((b) => b.type === 'text').ma
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST.' })
+
+  // Redigir proposta entra por aqui para não gastar uma função a mais do plano.
+  // Quem pede é a tela do orçamento, e só quem está logado como dono.
+  if (req.body?.tarefa === 'proposta') {
+    const quem = await donoAutenticado(req)
+    if (!quem) return res.status(401).json({ erro: 'Entre com a conta do dono.' })
+    try {
+      const texto = await redigirProposta(req.body.dados || {})
+      return res.status(200).json({ ok: true, texto })
+    } catch (e) {
+      console.error('proposta', e)
+      // Falhou a IA: a tela monta a proposta pelo texto padrão e ele edita à mão.
+      return res.status(502).json({ erro: String(e.message || e), usarPadrao: true })
+    }
+  }
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(503).json({ erro: 'TRON ainda não está configurado: falta a chave ANTHROPIC_API_KEY na Vercel.' })
   }

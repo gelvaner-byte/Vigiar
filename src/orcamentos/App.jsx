@@ -10,6 +10,8 @@ import { supabase } from "./supabaseOrc";
 import Comando from "./Comando.jsx";
 import { buscarProspect, moverProspect, pausarProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
 import { lerPoliticas, politicasParaAgentes, situacaoDaValidade, textoGarantia, tipoGarantiaSugerido, venceEm } from "./politicas.js";
+import TelaProposta from "./Proposta.jsx";
+import { propostaDesatualizada } from "./proposta.js";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
   assinarMudancas, lerCache, gravarCache,
@@ -417,6 +419,7 @@ function App() {
       setPoliticas(lerPoliticas(d.config.politicas));
       setCaixa(d.caixa || []);
       setConversas(Object.fromEntries((d.conversas || []).map((c) => [c.id, c])));
+      setPropostas(d.propostas || []);
       setFechamentos(d.fechamentos || []);
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
@@ -741,6 +744,23 @@ function App() {
     setCliAberto(null);
     setOsAberta({ novo: true, cliente: cli });
   };
+  // Propostas comerciais: uma por orçamento, guardada com a versão que foi enviada.
+  const [propostas, setPropostas] = useState([]);
+  const propostaDe = (orcId) => propostas.find((x) => x.orcamentoId === orcId) || null;
+  const salvarProposta = (prop, { marcarEnviado = false } = {}) => {
+    const next = propostas.some((x) => x.id === prop.id)
+      ? propostas.map((x) => (x.id === prop.id ? prop : x))
+      : [...propostas, prop];
+    setPropostas(next);
+    salvarRegistros("propostas", [prop]).catch(falhaAoSalvar);
+    if (marcarEnviado) {
+      const orc = orcamentos.find((o) => o.id === prop.orcamentoId);
+      if (orc && orc.status === "a_enviar") {
+        updOrc(orcamentos.map((o) => (o.id === orc.id ? { ...o, status: "enviado", dataEnvio: todayStr() } : o)));
+      }
+    }
+  };
+
   // Conversas com os agentes: ficam no banco, uma por agente, e voltam ao abrir o painel.
   const [conversas, setConversas] = useState({});
   const guardarConversa = (agente, dados) => {
@@ -774,6 +794,7 @@ function App() {
   const [prospect, setProspect] = useState(null);
   const [leadAberto, setLeadAberto] = useState(null);
   const [reagendando, setReagendando] = useState(null);
+  const [propostaAberta, setPropostaAberta] = useState(null);
   useEffect(() => {
     if (papel !== "escritorio") return;
     let vivo = true;
@@ -1033,6 +1054,8 @@ function App() {
           vendedoras={vendedoras}
           vendedorPadrao={vendAtiva ? vendAtiva.nome : ""}
           politicas={politicas}
+          proposta={propostaDe(orcAberto.id)}
+          onProposta={(o) => { setOrcAberto(null); setPropostaAberta(o); }}
           onSalvar={salvarOrc}
           onExcluir={excluirOrc}
           onGerarOS={gerarOSdeOrcamento}
@@ -1075,6 +1098,18 @@ function App() {
           onAbrirOs={(o) => { setCliAberto(null); setOsAberta(o); }}
           onToast={setToast}
           onFechar={() => setCliAberto(null)}
+        />
+      )}
+      {propostaAberta && (
+        <TelaProposta
+          orc={propostaAberta}
+          politicas={politicas}
+          proposta={propostaDe(propostaAberta.id)}
+          quemSou={meuNome || meuEmail}
+          onSalvar={salvarProposta}
+          onShare={setShare}
+          onToast={setToast}
+          onFechar={() => setPropostaAberta(null)}
         />
       )}
       {reagendando && (
@@ -2239,7 +2274,7 @@ function ListaOrdens({ ordens, onAbrir, onShare }) {
 }
 
 /* ============ sheet de orçamento ============ */
-function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", politicas, onSalvar, onExcluir, onGerarOS, onShare, onPreview, onToast, onFechar }) {
+function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vendedoras = [], vendedorPadrao = "", papel = "escritorio", tecnicos = [], quemSou = "", politicas, proposta, onSalvar, onExcluir, onGerarOS, onShare, onPreview, onProposta, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [o, setO] = useState(() =>
@@ -2552,10 +2587,30 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
             </div>
           )}
           {o.status === "a_enviar" && (
-            <button className="vg-btn vg-btn-violet" onClick={marcarEnviado}><Send size={16} /> Marcar como enviado</button>
+            <div className="vg-acao-box">
+              <label className="vg-acao-label">Mandar para o cliente</label>
+              <div className="vg-acao-row">
+                <button className="vg-btn vg-btn-primary" onClick={() => onProposta(o)}>
+                  <FileText size={16} /> {proposta ? "Ver proposta" : "Gerar proposta"}
+                </button>
+                <button className="vg-btn vg-btn-violet" onClick={marcarEnviado}>
+                  <Send size={16} /> Já enviei
+                </button>
+              </div>
+              <span className="vg-dica">
+                {proposta
+                  ? (propostaDesatualizada(o, proposta)
+                    ? "O orçamento mudou depois da proposta. Gere de novo antes de mandar."
+                    : "A proposta está pronta. Abra para revisar e enviar.")
+                  : "A proposta explica o serviço para o cliente e já vai com os valores do orçamento."}
+              </span>
+            </div>
           )}
           {o.status === "enviado" && (
             <div className="vg-acao-box">
+              <button className="vg-btn vg-btn-ghost vg-full" onClick={() => onProposta(o)}>
+                <FileText size={16} /> {proposta ? "Ver a proposta enviada" : "Gerar proposta"}
+              </button>
               <label className="vg-acao-label">O cliente autorizou o serviço?</label>
               <div className="vg-acao-row">
                 <button className="vg-btn vg-btn-green" onClick={autorizar}><ThumbsUp size={16} /> AUTORIZAR</button>
