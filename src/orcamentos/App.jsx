@@ -773,6 +773,7 @@ function App() {
   // Quem o TRON PROSPECT achou. Fica junto dos clientes, mas só o escritório enxerga.
   const [prospect, setProspect] = useState(null);
   const [leadAberto, setLeadAberto] = useState(null);
+  const [reagendando, setReagendando] = useState(null);
   useEffect(() => {
     if (papel !== "escritorio") return;
     let vivo = true;
@@ -958,6 +959,7 @@ function App() {
             onAbrirOs={setOsAberta}
             onToggle={toggleTarefa}
             onShare={setShare}
+            onReagendar={setReagendando}
           />
         ) : (
           <>
@@ -978,6 +980,7 @@ function App() {
             onAbrirOs={setOsAberta}
             onToggle={toggleTarefa}
             onShare={setShare}
+            onReagendar={setReagendando}
           />
         )}
         {view === "clientes" && (
@@ -1051,6 +1054,7 @@ function App() {
           onSalvar={salvarOs}
           onExcluir={excluirOs}
           onShare={setShare}
+          onReagendar={(o) => { setOsAberta(null); setReagendando(o); }}
           onToast={setToast}
           onFechar={() => setOsAberta(null)}
         />
@@ -1071,6 +1075,19 @@ function App() {
           onAbrirOs={(o) => { setCliAberto(null); setOsAberta(o); }}
           onToast={setToast}
           onFechar={() => setCliAberto(null)}
+        />
+      )}
+      {reagendando && (
+        <SheetReagendar
+          os={reagendando}
+          ordens={ordens}
+          tecnicos={tecnicos}
+          papel={papel}
+          quemSou={meuNome || meuEmail}
+          onSalvar={async (nova) => { updOs(ordens.map((x) => (x.id === nova.id ? nova : x))); }}
+          onShare={setShare}
+          onToast={setToast}
+          onFechar={() => setReagendando(null)}
         />
       )}
       {leadAberto && (
@@ -1271,7 +1288,7 @@ function compromissosPorDia(ordens, orcamentos) {
 }
 
 // Procura serviço/visita que ocupe o mesmo horário. Devolve o conflito ou null.
-function acharConflito({ ordens = [], orcamentos = [], data, hora, duracao, ignorarOsId, ignorarOrcId, soServicos = false }) {
+export function acharConflito({ ordens = [], orcamentos = [], data, hora, duracao, ignorarOsId, ignorarOrcId, soServicos = false }) {
   if (!data || !hora) return null;
   const ini = horaParaNum(hora);
   if (ini == null) return null;
@@ -1291,7 +1308,7 @@ function acharConflito({ ordens = [], orcamentos = [], data, hora, duracao, igno
     bate(o.horaVisita, Number(o.duracaoVisita) || DURACAO_VISITA));
   return orc ? { tipo: "visita", item: orc } : null;
 }
-const textoConflito = (c) =>
+export const textoConflito = (c) =>
   c.tipo === "servico"
     ? `Já existe a OS Nº ${c.item.numero} (${c.item.cliente || "sem nome"}) às ${c.item.horaServico || "—"}, com ${fmtDuracao(c.item.duracaoHoras || DURACAO_PADRAO)}.`
     : `Já existe a visita do orçamento Nº ${c.item.numero} (${c.item.cliente || "sem nome"}) às ${c.item.horaVisita || "—"}.`;
@@ -1760,7 +1777,7 @@ function montarTarefas(orcamentos, ordens, dia) {
   return [...visitas, ...servicos].sort((a, b) => (a.hora || "99:99").localeCompare(b.hora || "99:99"));
 }
 
-function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, papel = "escritorio" }) {
+function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, onReagendar, papel = "escritorio" }) {
   const t = todayStr();
   const [dia, setDia] = useState(t);
   const [modo, setModo] = useState("dia"); // dia | mes
@@ -1834,7 +1851,7 @@ function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, 
       {atrasadas.length > 0 && (
         <Secao titulo={`Ficaram de dias anteriores (${atrasadas.length})`} perigo icon={<AlertTriangle size={16} />}>
           {atrasadas.map((x) => (
-            <Tarefa key={x.tipo + x.item.id} x={x} dataExtra={x.data} onAbrir={() => abrir(x)} onToggle={() => onToggle(x.tipo, x.item)} />
+            <Tarefa key={x.tipo + x.item.id} x={x} dataExtra={x.data} onAbrir={() => abrir(x)} onToggle={() => onToggle(x.tipo, x.item)} onReagendar={onReagendar} />
           ))}
         </Secao>
       )}
@@ -1844,7 +1861,7 @@ function Agenda({ orcamentos, ordens, onAbrirOrc, onAbrirOs, onToggle, onShare, 
       ) : (
         <div className="vg-tarefas">
           {tarefas.map((x) => (
-            <Tarefa key={x.tipo + x.item.id} x={x} onAbrir={() => abrir(x)} onToggle={() => onToggle(x.tipo, x.item)} />
+            <Tarefa key={x.tipo + x.item.id} x={x} onAbrir={() => abrir(x)} onToggle={() => onToggle(x.tipo, x.item)} onReagendar={onReagendar} />
           ))}
         </div>
       )}
@@ -1951,7 +1968,7 @@ function Calendario({ orcamentos, ordens, onAbrirOrc, onAbrirOs }) {
   );
 }
 
-function Tarefa({ x, dataExtra, onAbrir, onToggle }) {
+function Tarefa({ x, dataExtra, onAbrir, onToggle, onReagendar }) {
   const it = x.item;
   const feito = tarefaFeita(x.tipo, it);
   const visita = x.tipo === "visita";
@@ -1986,6 +2003,12 @@ function Tarefa({ x, dataExtra, onAbrir, onToggle }) {
           </span>
         )}
       </div>
+      {!visita && !feito && onReagendar && (
+        <button className="vg-tarefa-reag" title="Reagendar este serviço"
+          onClick={(e) => { e.stopPropagation(); onReagendar(it); }}>
+          <CalendarClock size={15} />
+        </button>
+      )}
     </div>
   );
 }
@@ -2616,8 +2639,169 @@ function SheetOrcamento({ inicial, orcamentos, ordens = [], clientes = [], vende
   );
 }
 
+/* ============ reagendar atendimento ============ */
+// Move um serviço de horário. O horário antigo fica livre no mesmo instante, porque a agenda
+// é montada a partir da própria OS: mudou a data nela, mudou na agenda.
+function SheetReagendar({ os, ordens, tecnicos = [], papel = "escritorio", quemSou = "", onSalvar, onShare, onToast, onFechar }) {
+  const [data, setData] = useState(os.dataServico || todayStr());
+  const [hora, setHora] = useState(os.horaServico || "");
+  const [duracao, setDuracao] = useState(os.duracaoHoras ?? DURACAO_PADRAO);
+  const [tecnicoEmail, setTecnicoEmail] = useState(os.tecnicoEmail || "");
+  const [motivo, setMotivo] = useState("");
+  const [contarMotivo, setContarMotivo] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  const podeTrocarTecnico = papel !== "tecnico";
+  const tecnicoAtual = tecnicos.find((t) => String(t.email).toLowerCase() === String(os.tecnicoEmail || "").toLowerCase());
+  const tecnicoNovo = tecnicos.find((t) => String(t.email).toLowerCase() === String(tecnicoEmail).toLowerCase());
+  const mudouTecnico = String(tecnicoEmail || "").toLowerCase() !== String(os.tecnicoEmail || "").toLowerCase();
+  const mudouHorario = data !== os.dataServico || hora !== (os.horaServico || "") || duracao !== (os.duracaoHoras ?? DURACAO_PADRAO);
+
+  const conflito = useMemo(
+    () => acharConflito({ ordens, data, hora, duracao, ignorarOsId: os.id, soServicos: true }),
+    [ordens, data, hora, duracao, os.id],
+  );
+
+  const mensagem = useMemo(() => {
+    const quando = `${fmtDate(data)}${hora ? ` às ${hora}` : ""}`;
+    let t = `Olá${os.cliente ? `, ${String(os.cliente).split(" ")[0]}` : ""}! Aqui é da *Vigiar Sistemas*.\n\n`;
+    t += `Precisamos remarcar o seu atendimento${os.descricao ? ` de ${os.descricao}` : ""}.\n`;
+    t += `Ficou para *${quando}*.\n`;
+    if (contarMotivo && motivo.trim()) t += `\nMotivo: ${motivo.trim()}\n`;
+    t += `\nSe esse horário não for bom, é só responder que a gente ajusta.`;
+    return t;
+  }, [data, hora, os.cliente, os.descricao, motivo, contarMotivo]);
+
+  const confirmar = async () => {
+    if (!data) { onToast && onToast("Escolha a nova data."); return; }
+    if (!mudouHorario && !mudouTecnico) { onToast && onToast("Nada mudou ainda."); return; }
+    // Confere de novo na hora de salvar: alguém da equipe pode ter marcado algo enquanto
+    // esta tela estava aberta.
+    const agora = acharConflito({ ordens, data, hora, duracao, ignorarOsId: os.id, soServicos: true });
+    if (agora) { onToast && onToast(`Horário ocupado: ${textoConflito(agora)}`); return; }
+
+    setSalvando(true);
+    try {
+      const registro = {
+        em: new Date().toISOString(),
+        deData: os.dataServico, deHora: os.horaServico || "",
+        paraData: data, paraHora: hora || "",
+        deTecnico: tecnicoAtual ? tecnicoAtual.nome : (os.tecnicoNome || ""),
+        paraTecnico: tecnicoNovo ? tecnicoNovo.nome : "",
+        motivo: motivo.trim(),
+        por: quemSou || "",
+      };
+      await onSalvar({
+        ...os,
+        dataServico: data,
+        horaServico: hora,
+        duracaoHoras: duracao,
+        ...(podeTrocarTecnico ? { tecnicoEmail, tecnicoNome: tecnicoNovo ? tecnicoNovo.nome : "" } : {}),
+        reagendamentos: [...(Array.isArray(os.reagendamentos) ? os.reagendamentos : []), registro],
+      });
+      onToast && onToast(`OS Nº ${os.numero} remarcada para ${fmtDate(data)}${hora ? ` às ${hora}` : ""}.`);
+      onFechar();
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <Sheet onFechar={onFechar} titulo={`Reagendar OS Nº ${os.numero}`}>
+      <div className="vg-reag-atual">
+        <span className="vg-reag-rot">Como está hoje</span>
+        <b>{os.cliente}</b>
+        <em>{os.descricao || "Serviço"}</em>
+        <span>
+          <CalendarClock size={13} /> {fmtDate(os.dataServico)}{os.horaServico ? ` às ${os.horaServico}` : " (sem horário)"}
+          {" · "}{os.duracaoHoras ?? DURACAO_PADRAO}h
+        </span>
+        <span><Wrench size={13} /> {tecnicoAtual ? tecnicoAtual.nome : (os.tecnicoNome || "sem técnico definido")}</span>
+      </div>
+
+      <div className="vg-row2">
+        <Campo label="Nova data" icon={<CalendarClock size={14} />}>
+          <input type="date" className={"vg-in" + (conflito ? " vg-in-erro" : "")} value={data} onChange={(e) => setData(e.target.value)} />
+        </Campo>
+        <Campo label="Novo horário" icon={<Clock size={14} />}>
+          <input type="time" className={"vg-in" + (conflito ? " vg-in-erro" : "")} value={hora} onChange={(e) => setHora(e.target.value)} />
+        </Campo>
+      </div>
+      <Campo label="Tempo do serviço">
+        <select className="vg-in" value={duracao} onChange={(e) => setDuracao(Number(e.target.value))}>
+          {DURACOES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </Campo>
+
+      {conflito && (
+        <div className="vg-conflito">
+          <AlertTriangle size={16} />
+          <span><b>Horário ocupado.</b> {textoConflito(conflito)} Escolha outro horário.</span>
+        </div>
+      )}
+      {!hora && (
+        <div className="vg-itens-vazio">Sem horário definido, o app não consegue conferir conflito com outros serviços.</div>
+      )}
+
+      {podeTrocarTecnico && (
+        <Campo label="Técnico que executa" icon={<Wrench size={14} />}>
+          <select className="vg-in" value={tecnicoEmail} onChange={(e) => setTecnicoEmail(e.target.value)}>
+            <option value="">A definir</option>
+            {tecnicos.map((t) => <option key={t.id} value={t.email}>{t.nome}</option>)}
+          </select>
+        </Campo>
+      )}
+
+      <Campo label="Por que está remarcando (opcional)">
+        <input className="vg-in" value={motivo} onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Ex.: chuva, cliente pediu, peça não chegou" />
+        <label className="vg-check">
+          <input type="checkbox" checked={contarMotivo} onChange={(e) => setContarMotivo(e.target.checked)} />
+          <span>Contar o motivo para o cliente na mensagem</span>
+        </label>
+        <span className="vg-dica">Sem marcar, o motivo fica só no histórico interno da OS.</span>
+      </Campo>
+
+      <Campo label="Aviso para o cliente">
+        <p className="vg-msg-pronta">{mensagem}</p>
+        <div className="vg-acao-row">
+          <button className="vg-btn vg-btn-ghost" onClick={async () => {
+            try { await navigator.clipboard.writeText(mensagem); onToast && onToast("Mensagem copiada."); }
+            catch { onToast && onToast("Não consegui copiar."); }
+          }}><Copy size={15} /> Copiar</button>
+          <button className="vg-btn vg-btn-ghost" onClick={() => onShare({ titulo: `OS Nº ${os.numero}`, texto: mensagem })}>
+            <Share2 size={15} /> Enviar
+          </button>
+        </div>
+        <span className="vg-dica">O aviso é você quem manda, depois de confirmar a mudança.</span>
+      </Campo>
+
+      {!!(os.reagendamentos || []).length && (
+        <Campo label={`Já foi remarcado ${os.reagendamentos.length} vez(es)`}>
+          <ul className="vg-reag-hist">
+            {[...os.reagendamentos].reverse().map((r, i) => (
+              <li key={i}>
+                <b>{fmtDate(r.deData)}{r.deHora ? ` ${r.deHora}` : ""}</b> → {fmtDate(r.paraData)}{r.paraHora ? ` ${r.paraHora}` : ""}
+                {r.paraTecnico && r.paraTecnico !== r.deTecnico ? ` · técnico: ${r.deTecnico || "—"} → ${r.paraTecnico}` : ""}
+                {r.motivo ? ` · ${r.motivo}` : ""}
+                <em>{new Date(r.em).toLocaleDateString("pt-BR")}{r.por ? ` · ${r.por}` : ""}</em>
+              </li>
+            ))}
+          </ul>
+        </Campo>
+      )}
+
+      <div className="vg-sheet-foot">
+        <button className="vg-btn vg-btn-primary" onClick={confirmar} disabled={salvando || !!conflito}>
+          <Check size={16} /> {salvando ? "Remarcando…" : "Confirmar novo horário"}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
 /* ============ sheet de OS ============ */
-function SheetOS({ inicial, ordens, orcamentos = [], clientes = [], papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onShare, onToast, onFechar }) {
+function SheetOS({ inicial, ordens, orcamentos = [], clientes = [], papel = "escritorio", tecnicos = [], quemSou = "", onSalvar, onExcluir, onShare, onReagendar, onToast, onFechar }) {
   const novo = inicial.novo;
   const tecnico = papel === "tecnico";
   const [erroCli, setErroCli] = useState("");
@@ -2840,9 +3024,15 @@ function SheetOS({ inicial, ordens, orcamentos = [], clientes = [], papel = "esc
       </Campo>
 
       {!novo && o.status === "agendada" && (
-        <button className="vg-btn vg-btn-green vg-full" onClick={tecnico ? concluirServico : () => onSalvar({ ...o, status: "concluida", concluidaEm: new Date().toISOString(), concluidaPor: quemSou || "" })}>
-          <CircleCheck size={16} /> {tecnico ? "Concluí o serviço — enviar para o escritório" : "Marcar como concluída"}
-        </button>
+        <>
+          <button className="vg-btn vg-btn-green vg-full" onClick={tecnico ? concluirServico : () => onSalvar({ ...o, status: "concluida", concluidaEm: new Date().toISOString(), concluidaPor: quemSou || "" })}>
+            <CircleCheck size={16} /> {tecnico ? "Concluí o serviço — enviar para o escritório" : "Marcar como concluída"}
+          </button>
+          <button className="vg-btn vg-btn-ghost vg-full" onClick={() => onReagendar(o)}>
+            <CalendarClock size={16} /> Reagendar
+            {(o.reagendamentos || []).length > 0 ? ` (já remarcado ${o.reagendamentos.length}x)` : ""}
+          </button>
+        </>
       )}
       {!novo && o.status === "concluida" && !tecnico && (
         <button className="vg-btn vg-btn-ghost vg-full" onClick={() => onSalvar({ ...o, status: "agendada" })}>
@@ -3638,6 +3828,22 @@ function Estilos() {
   font-size:12.5px;color:#5a3a20;background:#fff;border:1px solid #f0d8c0;border-radius:9px;padding:8px 11px}
 .vg-msg-pronta{margin:0;padding:11px 13px;border-radius:11px;background:#fff6ee;border:1px solid #f0d8c0;
   font-size:13px;line-height:1.6;color:#5a3a20;white-space:pre-wrap}
+.vg-tarefa-reag{flex-shrink:0;align-self:flex-start;width:34px;height:34px;display:grid;place-items:center;
+  cursor:pointer;border-radius:9px;color:#8a6a4a;background:#fff;border:1px solid #f0d8c0}
+.vg-tarefa-reag:hover{color:#e2640a;border-color:#e2640a}
+.vg-reag-atual{display:flex;flex-direction:column;gap:4px;margin-bottom:16px;padding:12px 14px;border-radius:12px;
+  background:#fff6ee;border:1px solid #f0d8c0}
+.vg-reag-rot{font-size:9.5px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#b07a45}
+.vg-reag-atual b{font-size:15px;color:#5a3a20}
+.vg-reag-atual em{font-style:normal;font-size:12.5px;color:#8a6a4a}
+.vg-reag-atual > span{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#5a3a20;margin-top:2px}
+.vg-reag-hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.vg-reag-hist li{font-size:12px;line-height:1.5;color:#5a3a20;padding-bottom:6px;border-bottom:1px solid #f0d8c0}
+.vg-reag-hist li:last-child{border-bottom:none}
+.vg-reag-hist b{font-family:ui-monospace,monospace}
+.vg-reag-hist em{display:block;font-style:normal;font-size:10.5px;color:#9a7b60;margin-top:2px}
+.vg-check{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;color:#5a3a20;cursor:pointer}
+.vg-check input{width:17px;height:17px;accent-color:#e2640a}
 .vg-validade{display:block;margin-top:5px;font-size:11.5px;line-height:1.45;color:#8a6a4a}
 .vg-validade.atencao{color:#c2680c;font-weight:600}
 .vg-validade.ruim{color:#c0392b;font-weight:600}
