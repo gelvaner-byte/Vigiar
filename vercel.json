@@ -6,12 +6,13 @@
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/prospect/rotina",
-      "schedule": "0 12 * * *"
+      "path": "/api/cron",
+      "schedule": "0 11 * * *"
     }
   ],
   "functions": {
-    "api/prospect/rotina.js": { "maxDuration": 300 },
+    "api/cron.js": { "maxDuration": 300 },
+    "api/marketing.js": { "maxDuration": 300 },
     "api/prospect/pesquisar.js": { "maxDuration": 300 }
   }
 }

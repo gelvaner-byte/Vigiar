@@ -12,6 +12,7 @@ import PainelML, { buscarDadosML, margemDoItem } from "./MercadoLivre.jsx";
 import PainelProspect, { buscarProspect, moverProspect, pausarProspect, pesquisarProspect } from "./Prospect.jsx";
 import PainelPoliticas from "./Politicas.jsx";
 import PainelCaixa, { resumoCaixa } from "./Caixa.jsx";
+import PainelMarketing, { buscarMarketing } from "./Marketing.jsx";
 import { memoriasDasPoliticas, situacaoDaValidade } from "./politicas.js";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
@@ -185,6 +186,15 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
     finally { setLendoMl(false); }
   };
 
+  const [marketing, setMarketing] = useState(null);
+  const [lendoMk, setLendoMk] = useState(false);
+  const atualizarMarketing = async () => {
+    setLendoMk(true);
+    try { setMarketing(await buscarMarketing()); }
+    catch (e) { onToast && onToast("Marketing: " + String(e.message || e)); }
+    finally { setLendoMk(false); }
+  };
+
   const atualizarProspect = async () => {
     setLendoProspect(true);
     try { setProspect(await buscarProspect()); }
@@ -267,6 +277,8 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
       badge: (prospect?.leads || []).filter((l) => ["pesquisa_concluida", "qualificado", "aguardando_contato"].includes(l.estagio)).length || null },
     { id: "cerebro", nome: "CÉREBRO", icon: <Brain size={14} />, badge: cerebro.length + memoriasDasPoliticas(politicas).length },
     { id: "agentes", nome: "AGENTES", icon: <Radio size={14} /> },
+    { id: "marketing", nome: "MARKETING", icon: <Megaphone size={14} />,
+      badge: (marketing?.entregas || []).some((e) => e.data === marketing?.hoje && e.ok && !e.publicadoEm) ? 1 : null },
     { id: "caixa", nome: "CAIXA", icon: <Wallet size={14} /> },
     { id: "politicas", nome: "POLÍTICAS", icon: <ScrollText size={14} /> },
   ];
@@ -313,6 +325,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
           catch (e) { console.error(e); }
           atualizarMl();
           atualizarProspect();
+          atualizarMarketing();
         }} onFechar={onFechar} />
       ) : (
         <>
@@ -521,6 +534,13 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               onExcluir={onExcluirMemoria}
               onToast={onToast}
             />
+          </Painel>
+        )}
+
+        {aba === "marketing" && (
+          <Painel icon={<Megaphone size={14} />} titulo="Marketing — Instagram da Vigiar" className="cmd-cheio">
+            <PainelMarketing dados={marketing} carregando={lendoMk}
+              onAtualizar={atualizarMarketing} onToast={onToast} />
           </Painel>
         )}
 

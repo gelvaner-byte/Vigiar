@@ -35,11 +35,11 @@ export default function MercadoLivre({ dados, carregando, onAtualizar, custos, o
 
   const conectar = async () => {
     const { data } = await supabase.auth.getSession();
-    window.location.href = `/api/ml/conectar?token=${encodeURIComponent(data.session?.access_token || "")}`;
+    window.location.href = `/api/ml/conexao?token=${encodeURIComponent(data.session?.access_token || "")}`;
   };
   const desconectar = async () => {
     const { data } = await supabase.auth.getSession();
-    await fetch("/api/ml/desconectar", { method: "POST", headers: { Authorization: `Bearer ${data.session?.access_token}` } });
+    await fetch("/api/ml/conexao?acao=sair", { method: "POST", headers: { Authorization: `Bearer ${data.session?.access_token}` } });
     onToast && onToast("Mercado Livre desconectado.");
     onAtualizar();
   };

@@ -1,7 +1,7 @@
 // Pesquisa sob demanda: o Gelvan (ou o TRON) pede uma busca agora, sem esperar as 10h.
 // Usa o login de quem pediu, então não depende da chave de serviço.
 import { auth, lerConfig } from './_lib.js'
-import { rodarRotina } from './rotina.js'
+import { rodarRotina } from './_rotina.js'
 import { usuarioDoToken } from '../ml/_lib.js'
 
 const jwtDa = (req) => {
