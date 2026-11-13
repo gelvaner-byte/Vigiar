@@ -534,7 +534,7 @@ function Estilo() {
     <style>{`
 .mk{display:flex;flex-direction:column;gap:14px;font-size:13px}
 .mk h4{display:flex;align-items:center;gap:6px;margin:0;font-size:10px;font-weight:800;letter-spacing:1.3px;
-  text-transform:uppercase;color:#ff9a45;font-family:ui-monospace,monospace}
+  text-transform:uppercase;color:#ff9a45;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .mk-dim{margin:0;font-size:12px;line-height:1.55;color:#7e94b4}
 .mk-dim b{color:#dce7f5}
 .mk-topo{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
@@ -582,7 +582,7 @@ function Estilo() {
 .mk-duplo{display:grid;grid-template-columns:1fr;gap:10px}
 @media (min-width:620px){.mk-duplo{grid-template-columns:1fr 1fr}}
 .mk-caixa{border-radius:11px;padding:12px 14px;background:rgba(120,180,255,.05);border:1px solid rgba(120,180,255,.16)}
-.mk-caixa b{display:block;margin:6px 0 3px;font-size:21px;font-family:ui-monospace,monospace;color:#fff}
+.mk-caixa b{display:block;margin:6px 0 3px;font-size:21px;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;color:#fff}
 .mk-caixa p{margin:6px 0 0;font-size:12.5px;line-height:1.55;color:#b9cbe4}
 .mk-fontes{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;font-size:12px}
 .mk-fontes a{color:#78a8e0;word-break:break-all}
@@ -638,7 +638,7 @@ function Estilo() {
 .mk-hist li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;color:#b9cbe4;
   padding-bottom:7px;border-bottom:1px solid rgba(120,180,255,.1)}
 .mk-hist li.falhou{color:#ff8f8f}
-.mk-hist b{font-family:ui-monospace,monospace;color:#fff}
+.mk-hist b{font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;color:#fff}
 .mk-hist span{flex:1;min-width:140px}
 .mk-hist em{font-style:normal;font-size:10.5px;color:#6f87a8}
 

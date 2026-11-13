@@ -5,7 +5,7 @@
 export const L = 1080;
 export const A = 1350;
 
-const FONTE = '"Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
+const FONTE = 'Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif';
 
 /* ===== texto que cabe ===== */
 

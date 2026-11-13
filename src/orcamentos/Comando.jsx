@@ -329,11 +329,16 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
         }} onFechar={onFechar} />
       ) : (
         <>
+        <div className="cmd-corpo-geral">
         <nav className="cmd-abas" role="tablist">
           {ABAS.map((a) => (
-            <button key={a.id} role="tab" aria-selected={aba === a.id}
+            <button key={a.id} role="tab" aria-selected={aba === a.id} title={a.nome}
               className={"cmd-aba" + (aba === a.id ? " ativa" : "")} onClick={() => setAba(a.id)}>
-              {a.icon}<span>{a.nome}</span>
+              <span className="cmd-aba-ico">
+                {a.icon}
+                {a.badge ? <i className={"cmd-aba-ponto" + (a.urgente ? " urgente" : "")} /> : null}
+              </span>
+              <span className="cmd-aba-nome">{a.nome}</span>
               {a.badge ? <i className={"cmd-aba-n" + (a.urgente ? " urgente" : "")}>{a.badge}</i> : null}
             </button>
           ))}
@@ -573,6 +578,7 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
           </Painel>
         )}
         </div>
+        </div>
         </>
       )}
     </div>
@@ -583,7 +589,7 @@ function Estilo() {
   return (
     <style>{`
 .cmd-tela{position:fixed;inset:0;z-index:70;overflow-y:auto;background:#05080f;color:#e8f0fb;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .cmd-grid-bg{position:fixed;inset:0;pointer-events:none;
   background-image:linear-gradient(rgba(120,180,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(120,180,255,.06) 1px,transparent 1px);
   background-size:42px 42px;
@@ -598,9 +604,9 @@ function Estilo() {
 .cmd-marca{display:flex;align-items:center;gap:12px}
 .cmd-logo{width:40px;height:40px;display:grid;place-items:center;color:#fff;background:#e2640a;
   box-shadow:0 0 26px rgba(255,140,50,.6);clip-path:polygon(22% 0,100% 0,100% 78%,78% 100%,0 100%,0 22%)}
-.cmd-topo h1{margin:0;font-size:14px;letter-spacing:3px;font-weight:800;font-family:ui-monospace,"Courier New",monospace}
+.cmd-topo h1{margin:0;font-size:14px;letter-spacing:3px;font-weight:800;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-topo h1 em{font-style:normal;color:#ff9a45}
-.cmd-topo p{margin:3px 0 0;font-size:10px;color:#6f87a8;letter-spacing:2px;font-family:ui-monospace,monospace}
+.cmd-topo p{margin:3px 0 0;font-size:10px;color:#6f87a8;letter-spacing:2px;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-topo-btns{display:flex;gap:8px}
 .cmd-x{width:38px;height:38px;border-radius:10px;border:1px solid rgba(120,180,255,.22);background:rgba(120,180,255,.08);
   color:#e8f0fb;display:grid;place-items:center;cursor:pointer}
@@ -612,37 +618,60 @@ function Estilo() {
   clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)}
 .cmd-cadeado{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;color:#ff9a45;
   background:rgba(255,140,50,.12);border:1px solid rgba(255,140,50,.45);box-shadow:0 0 30px rgba(255,140,50,.25)}
-.cmd-tranca h2{margin:6px 0 0;font-size:15px;letter-spacing:3px;font-family:ui-monospace,monospace}
+.cmd-tranca h2{margin:6px 0 0;font-size:15px;letter-spacing:3px;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-tranca p{margin:0 0 6px;font-size:13px;color:#7e94b4;line-height:1.5}
 .cmd-tranca input{width:100%;box-sizing:border-box;border-radius:9px;padding:12px;font-size:16px;font-family:inherit;
   background:rgba(120,180,255,.07);border:1px solid rgba(120,180,255,.25);color:#fff;outline:none}
 .cmd-tranca input:focus{border-color:#ff8c32;box-shadow:0 0 0 3px rgba(255,140,50,.18)}
 .cmd-tranca button{width:100%;border:none;border-radius:9px;padding:12px;font-size:13px;font-weight:800;letter-spacing:2px;
-  font-family:ui-monospace,monospace;background:#e2640a;color:#fff;cursor:pointer}
+  font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;background:#e2640a;color:#fff;cursor:pointer}
 .cmd-tranca button:disabled{opacity:.6}
 .cmd-cancelar{background:transparent!important;color:#6f87a8!important;letter-spacing:1px!important;font-weight:600!important}
 .cmd-erro{color:#ff6b6b;font-size:13px;font-weight:600}
 
-/* abas */
-.cmd-abas{position:sticky;top:64px;z-index:2;display:flex;gap:6px;overflow-x:auto;padding:10px 16px;
-  background:rgba(5,8,15,.86);border-bottom:1px solid rgba(120,180,255,.14);backdrop-filter:blur(8px);
-  scrollbar-width:none}
+/* menu lateral: fica estreito e abre quando o mouse encosta */
+.cmd-corpo-geral{display:flex;align-items:flex-start}
+.cmd-abas{position:sticky;top:64px;z-index:4;flex-shrink:0;display:flex;flex-direction:column;gap:5px;
+  width:62px;padding:12px 9px;height:calc(100vh - 64px);overflow-y:auto;overflow-x:hidden;
+  background:rgba(5,8,15,.92);border-right:1px solid rgba(120,180,255,.14);backdrop-filter:blur(8px);
+  transition:width .18s ease;scrollbar-width:none}
 .cmd-abas::-webkit-scrollbar{display:none}
-.cmd-aba{display:flex;align-items:center;gap:7px;flex-shrink:0;cursor:pointer;white-space:nowrap;
-  padding:9px 14px;font-size:10.5px;font-weight:800;letter-spacing:1.6px;font-family:ui-monospace,monospace;
-  color:#7e94b4;background:rgba(120,180,255,.05);border:1px solid rgba(120,180,255,.16);
-  clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
-.cmd-aba:hover{color:#b9cbe4;border-color:rgba(120,180,255,.3)}
-.cmd-aba.ativa{color:#fff;background:rgba(255,140,50,.16);border-color:rgba(255,140,50,.55);
-  box-shadow:0 0 18px rgba(255,140,50,.18)}
+.cmd-abas:hover,.cmd-abas:focus-within{width:216px;box-shadow:18px 0 40px rgba(0,0,0,.45)}
+.cmd-aba{display:flex;align-items:center;gap:11px;flex-shrink:0;cursor:pointer;white-space:nowrap;
+  width:100%;padding:10px 10px;border-radius:11px;font-size:10.5px;font-weight:800;letter-spacing:1.4px;
+  font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;
+  color:#7e94b4;background:transparent;border:1px solid transparent;text-align:left}
+.cmd-aba:hover{color:#dce7f5;background:rgba(120,180,255,.08)}
+.cmd-aba.ativa{color:#fff;background:rgba(255,140,50,.16);border-color:rgba(255,140,50,.45)}
 .cmd-aba.ativa svg{color:#ff9a45}
+.cmd-aba-ico{position:relative;flex-shrink:0;width:22px;display:grid;place-items:center}
+/* fechado só cabe o ícone, então o aviso vira um ponto em cima dele */
+.cmd-aba-ponto{position:absolute;top:-3px;right:-3px;width:7px;height:7px;border-radius:50%;
+  background:#78a8e0;border:1.5px solid #05080f}
+.cmd-aba-ponto.urgente{background:#ff6b6b}
+.cmd-aba-nome,.cmd-aba-n{opacity:0;transition:opacity .14s ease}
+.cmd-abas:hover .cmd-aba-nome,.cmd-abas:focus-within .cmd-aba-nome,
+.cmd-abas:hover .cmd-aba-n,.cmd-abas:focus-within .cmd-aba-n{opacity:1}
+.cmd-abas:hover .cmd-aba-ponto,.cmd-abas:focus-within .cmd-aba-ponto{opacity:0}
+.cmd-aba-nome{flex:1;min-width:0;overflow:hidden}
 .cmd-aba-n{font-style:normal;font-size:9.5px;min-width:17px;text-align:center;border-radius:99px;padding:2px 5px;
-  background:rgba(120,180,255,.16);color:#b9cbe4}
+  background:rgba(120,180,255,.16);color:#b9cbe4;flex-shrink:0}
 .cmd-aba.ativa .cmd-aba-n{background:rgba(255,140,50,.3);color:#fff}
 .cmd-aba-n.urgente{background:rgba(255,107,107,.25);color:#ff8f8f}
 
+/* Dedo não tem "passar por cima": no celular o menu volta a ser uma faixa que desliza. */
+@media (max-width:820px),(hover:none){
+  .cmd-corpo-geral{display:block}
+  .cmd-abas{flex-direction:row;width:auto;height:auto;padding:10px 14px;overflow-x:auto;
+    border-right:none;border-bottom:1px solid rgba(120,180,255,.14)}
+  .cmd-abas:hover,.cmd-abas:focus-within{width:auto;box-shadow:none}
+  .cmd-aba{width:auto;padding:9px 13px}
+  .cmd-aba-nome,.cmd-aba-n{opacity:1}
+  .cmd-aba-ponto{display:none}
+}
+
 /* núcleo */
-.cmd-sala{position:relative;max-width:1340px;margin:0 auto;padding:22px 16px 40px}
+.cmd-sala{position:relative;flex:1;min-width:0;max-width:1340px;margin:0 auto;padding:22px 16px 40px}
 .cmd-cheio{min-height:calc(100vh - 190px);display:flex;flex-direction:column}
 .cmd-cheio .cmd-corpo{flex:1;min-height:0}
 .cmd-nucleo{position:relative;height:216px;display:grid;place-items:center;margin:6px 0 10px}
@@ -656,8 +685,8 @@ function Estilo() {
   align-items:center;justify-content:center;gap:3px;text-align:center;padding:10px;
   background:radial-gradient(circle at 50% 35%,rgba(255,140,50,.3),rgba(5,8,15,.95) 70%);
   box-shadow:0 0 60px rgba(255,140,50,.35),inset 0 0 30px rgba(255,140,50,.18);border:1px solid rgba(255,140,50,.5)}
-.cmd-centro strong{font-size:24px;font-weight:800;line-height:1;font-family:ui-monospace,monospace;color:#fff}
-.cmd-centro-rot{font-size:8.5px;letter-spacing:1.6px;color:#ff9a45;font-family:ui-monospace,monospace}
+.cmd-centro strong{font-size:24px;font-weight:800;line-height:1;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;color:#fff}
+.cmd-centro-rot{font-size:8.5px;letter-spacing:1.6px;color:#ff9a45;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-centro-sub{font-size:10px;color:#7e94b4;line-height:1.3}
 
 /* faixa de números */
@@ -665,7 +694,7 @@ function Estilo() {
 @media (min-width:700px){.cmd-faixa{grid-template-columns:repeat(6,1fr)}}
 .cmd-chip{background:rgba(10,18,32,.75);border:1px solid rgba(120,180,255,.16);padding:10px 12px;
   clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
-.cmd-chip b{display:block;font-size:19px;font-weight:800;font-family:ui-monospace,monospace;color:#fff}
+.cmd-chip b{display:block;font-size:19px;font-weight:800;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;color:#fff}
 .cmd-chip span{display:block;font-size:10px;color:#6f87a8;margin-top:3px;letter-spacing:.4px}
 .cmd-chip.perigo{border-color:rgba(255,107,107,.5)}
 .cmd-chip.perigo b{color:#ff6b6b}
@@ -679,7 +708,7 @@ function Estilo() {
 .cmd-painel.alerta{border-color:rgba(255,107,107,.45)}
 .cmd-painel header{display:flex;align-items:center;gap:8px;padding:11px 14px;font-size:10.5px;font-weight:800;
   letter-spacing:2px;text-transform:uppercase;color:#ff9a45;border-bottom:1px solid rgba(120,180,255,.14);
-  font-family:ui-monospace,monospace}
+  font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-led{margin-left:auto;width:7px;height:7px;border-radius:50%;background:#22d39a;box-shadow:0 0 10px #22d39a;animation:cmdled 2.2s ease-in-out infinite}
 .cmd-painel.alerta .cmd-led{background:#ff6b6b;box-shadow:0 0 10px #ff6b6b}
 @keyframes cmdled{0%,100%{opacity:1}50%{opacity:.25}}
@@ -687,7 +716,7 @@ function Estilo() {
 
 .cmd-funil{display:flex;gap:12px}
 .cmd-funil div{flex:1}
-.cmd-funil b{display:block;font-size:21px;font-weight:800;font-family:ui-monospace,monospace;color:#fff}
+.cmd-funil b{display:block;font-size:21px;font-weight:800;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;color:#fff}
 .cmd-funil b.ruim{color:#ff6b6b}
 .cmd-funil span{display:block;font-size:10px;color:#6f87a8;margin-top:2px}
 
@@ -697,17 +726,17 @@ function Estilo() {
 .cmd-lista li:last-child{border-bottom:none;padding-bottom:0}
 .cmd-lista b{color:#fff}
 .cmd-rola{max-height:150px;overflow-y:auto}
-.cmd-valor{margin-left:auto;font-weight:800;color:#22d39a;font-family:ui-monospace,monospace}
+.cmd-valor{margin-left:auto;font-weight:800;color:#22d39a;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-dim{color:#6f87a8;font-size:12.5px;margin:0;line-height:1.5}
-.cmd-ok{color:#22d39a;font-size:13px;font-weight:700;margin:0;font-family:ui-monospace,monospace}
+.cmd-ok{color:#22d39a;font-size:13px;font-weight:700;margin:0;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 
 .cmd-graf{display:flex;flex-direction:column;gap:6px}
 .cmd-graf svg{width:100%;height:72px;display:block}
-.cmd-graf-eixo{display:flex;justify-content:space-between;font-size:10px;color:#6f87a8;font-family:ui-monospace,monospace}
+.cmd-graf-eixo{display:flex;justify-content:space-between;font-size:10px;color:#6f87a8;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 
 .cmd-barras{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
 .cmd-barra-rot{display:flex;justify-content:space-between;font-size:12px;color:#b9cbe4;margin-bottom:5px}
-.cmd-barra-rot em{font-style:normal;color:#22d39a;font-weight:800;font-family:ui-monospace,monospace}
+.cmd-barra-rot em{font-style:normal;color:#22d39a;font-weight:800;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-barra{display:block;height:7px;background:rgba(120,180,255,.12);border-radius:99px;overflow:hidden}
 .cmd-barra i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#ff8c32,#ffc178)}
 
@@ -716,7 +745,7 @@ function Estilo() {
 .cmd-sis i{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .cmd-sis i.on{background:#22d39a;box-shadow:0 0 9px #22d39a}
 .cmd-sis i.off{background:#6f87a8}
-.cmd-sis em{margin-left:auto;font-style:normal;font-size:11px;color:#6f87a8;font-family:ui-monospace,monospace;text-transform:uppercase;letter-spacing:.6px}
+.cmd-sis em{margin-left:auto;font-style:normal;font-size:11px;color:#6f87a8;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;text-transform:uppercase;letter-spacing:.6px}
 
 .cmd-nos{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:1fr;gap:9px}
 @media (min-width:560px){.cmd-nos{grid-template-columns:repeat(2,1fr)}}
@@ -726,7 +755,7 @@ function Estilo() {
   clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px)}
 .cmd-no-ico{width:30px;height:30px;display:grid;place-items:center;flex-shrink:0;color:#ff9a45;
   background:rgba(255,140,50,.14);border:1px solid rgba(255,140,50,.3);border-radius:8px}
-.cmd-nos b{font-size:12px;letter-spacing:1.4px;font-family:ui-monospace,monospace}
+.cmd-nos b{font-size:12px;letter-spacing:1.4px;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cmd-nos em{width:100%;font-style:normal;font-size:10.5px;color:#6f87a8;padding-left:39px;margin-top:-4px}
 .cmd-no-tag{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#6f87a8;
   border:1px solid rgba(120,180,255,.22);border-radius:99px;padding:3px 8px;white-space:nowrap}

@@ -133,7 +133,7 @@ function Estilo() {
 @media (min-width:720px){.pol-grade{grid-template-columns:repeat(3,1fr)}}
 .pol-bloco{display:flex;flex-direction:column;gap:7px}
 .pol-bloco h4{margin:0;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
-  color:#ff9a45;font-family:ui-monospace,monospace}
+  color:#ff9a45;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .pol-num{display:flex;align-items:center;gap:9px}
 .pol-num input{width:90px}
 .pol-num span{font-size:12px;color:#8ba3c2}

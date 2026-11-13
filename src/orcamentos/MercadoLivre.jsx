@@ -208,18 +208,18 @@ export default function MercadoLivre({ dados, carregando, onAtualizar, custos, o
 .ml-mini + .ml-mini{margin-left:0}
 .ml-nums{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
 .ml-nums div{background:rgba(120,180,255,.05);border:1px solid rgba(120,180,255,.14);border-radius:10px;padding:9px 10px}
-.ml-nums b{display:block;font-size:17px;font-weight:800;font-family:ui-monospace,monospace;color:#fff}
+.ml-nums b{display:block;font-size:17px;font-weight:800;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;color:#fff}
 .ml-nums span{display:block;font-size:10px;color:#6f87a8;margin-top:2px;line-height:1.3}
 .ml-nums .alerta{border-color:rgba(255,107,107,.4)}
 .ml-nums .alerta b{color:#ff6b6b}
 .ml-rep{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#b9cbe4}
 .ml-rep svg{color:#fbbf24}
 .ml-tit{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1px;
-  text-transform:uppercase;color:#ff9a45;font-family:ui-monospace,monospace;margin-top:4px}
+  text-transform:uppercase;color:#ff9a45;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;margin-top:4px}
 .ml-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
 .ml-lista li{display:flex;align-items:center;gap:7px;font-size:12.5px;color:#b9cbe4}
 .ml-lista b{color:#fff}
-.ml-val{margin-left:auto;font-weight:800;color:#22d39a;font-family:ui-monospace,monospace}
+.ml-val{margin-left:auto;font-weight:800;color:#22d39a;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .ml-anuncios{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;max-height:300px;overflow-y:auto}
 .ml-anuncios li{display:flex;align-items:center;gap:9px;background:rgba(120,180,255,.05);
   border:1px solid rgba(120,180,255,.14);border-radius:10px;padding:8px 10px;cursor:pointer}
@@ -227,7 +227,7 @@ export default function MercadoLivre({ dados, carregando, onAtualizar, custos, o
 .ml-an-txt{flex:1;display:flex;flex-direction:column;min-width:0}
 .ml-an-txt b{font-size:12.5px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ml-an-txt em{font-style:normal;font-size:11px;color:#6f87a8}
-.ml-margem{font-size:12px;font-weight:800;font-family:ui-monospace,monospace;white-space:nowrap}
+.ml-margem{font-size:12px;font-weight:800;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;white-space:nowrap}
 .ml-margem.boa{color:#22d39a}
 .ml-margem.ruim{color:#ff6b6b}
 .ml-margem.sem{color:#6f87a8;font-weight:600}

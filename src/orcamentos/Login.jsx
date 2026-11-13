@@ -54,7 +54,7 @@ export default function LoginOrcamentos() {
       <style>{`
 .vgl-fundo{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
   background:#2b1607;background-image:radial-gradient(120% 120% at 100% 0%,rgba(226,100,10,.55),transparent 60%);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .vgl-caixa{width:100%;max-width:380px;background:#fff;border-radius:20px;padding:26px 22px;box-shadow:0 18px 44px rgba(0,0,0,.35)}
 .vgl-topo{display:flex;align-items:center;gap:12px;margin-bottom:22px}
 .vgl-logo{width:46px;height:46px;border-radius:13px;background:#e2640a;color:#fff;display:grid;place-items:center;flex-shrink:0}

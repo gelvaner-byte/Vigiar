@@ -585,16 +585,16 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
 .tron-consultas{display:flex;flex-direction:column;gap:6px;background:rgba(120,180,255,.05);
   border:1px solid rgba(120,180,255,.16);border-radius:12px;padding:10px 12px}
 .tron-consultas-tit{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:1px;
-  text-transform:uppercase;color:#6f87a8;font-family:ui-monospace,monospace}
+  text-transform:uppercase;color:#6f87a8;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .tron-parecer button{display:inline-flex;align-items:center;gap:6px;background:rgba(255,140,50,.12);
   border:1px solid rgba(255,140,50,.35);color:#ff9a45;border-radius:99px;padding:5px 11px;
-  font-size:11px;font-weight:800;letter-spacing:.6px;font-family:ui-monospace,monospace;cursor:pointer}
+  font-size:11px;font-weight:800;letter-spacing:.6px;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;cursor:pointer}
 .tron-parecer-txt{margin-top:6px;border-left:2px solid rgba(255,140,50,.35);padding-left:10px}
 .tron-parecer-txt em{display:block;font-style:normal;font-size:11.5px;color:#6f87a8;margin-bottom:4px}
 .tron-parecer-txt p{margin:0;font-size:12.5px;color:#cbd8ea;line-height:1.55;white-space:pre-wrap}
 .tron-ag{display:inline-flex;align-items:center;gap:6px;background:rgba(120,180,255,.07);border:1px solid rgba(120,180,255,.2);
   color:#8ba0bd;border-radius:99px;padding:7px 13px;font-size:11.5px;font-weight:800;letter-spacing:.8px;
-  font-family:ui-monospace,monospace;cursor:pointer}
+  font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;cursor:pointer}
 .tron-ag.on{background:rgba(255,140,50,.16);border-color:rgba(255,140,50,.5);color:#ff9a45}
 .tron-papel{margin-left:auto;font-size:10.5px;color:#6f87a8;letter-spacing:.5px}
 .tron-conversa{display:flex;flex-direction:column;gap:10px;max-height:460px;overflow-y:auto;padding-right:4px}
@@ -609,7 +609,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
 .tron-msg p{margin:0;white-space:pre-wrap}
 .tron-msg.eu{align-self:flex-end;background:rgba(255,140,50,.16);border:1px solid rgba(255,140,50,.35);color:#ffe3cc}
 .tron-msg.ele{align-self:flex-start;background:rgba(120,180,255,.07);border:1px solid rgba(120,180,255,.18);color:#dce7f6;padding-right:30px}
-.tron-msg.pensando{display:flex;align-items:center;gap:7px;color:#6f87a8;font-family:ui-monospace,monospace;font-size:12px}
+.tron-msg.pensando{display:flex;align-items:center;gap:7px;color:#6f87a8;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;font-size:12px}
 .tron-msg.pensando svg{animation:tronroda 1s linear infinite}
 @keyframes tronroda{to{transform:rotate(360deg)}}
 .tron-copiar{position:absolute;top:7px;right:7px;background:none;border:none;color:#6f87a8;cursor:pointer;padding:2px}
@@ -617,7 +617,7 @@ export default function Tron({ clientes, orcamentos, ordens, cerebro = [], finan
   border:1px solid rgba(255,107,107,.35);border-radius:10px;padding:10px 12px;line-height:1.45}
 .tron-acao{background:rgba(255,140,50,.07);border:1px solid rgba(255,140,50,.4);border-radius:12px;padding:11px 13px}
 .tron-acao header{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:1.4px;
-  text-transform:uppercase;color:#ff9a45;font-family:ui-monospace,monospace;margin-bottom:9px}
+  text-transform:uppercase;color:#ff9a45;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace;margin-bottom:9px}
 .tron-acao dl{margin:0;display:flex;flex-direction:column;gap:5px}
 .tron-acao dl div{display:flex;gap:8px;font-size:12.5px}
 .tron-acao dt{color:#6f87a8;min-width:78px}

@@ -266,7 +266,7 @@ function Estilo() {
 .cer-svg{width:100%;height:auto;display:block}
 .cer-no{cursor:pointer}
 .cer-no:hover circle:last-of-type{r:5.5}
-.cer-rot{fill:#8aa0bf;font-size:10.5px;font-family:ui-monospace,monospace}
+.cer-rot{fill:#8aa0bf;font-size:10.5px;font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .cer-qtd{fill:#52698c;font-size:9.5px}
 .cer-centro{fill:#cbd9f5;font-size:12px;font-weight:600;letter-spacing:.5px}
 .cer-pulsa{animation:cerpulsa 3.6s ease-in-out infinite;transform-origin:center}

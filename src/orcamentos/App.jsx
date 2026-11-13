@@ -3655,7 +3655,7 @@ function Estilos() {
   --ink:#2b1607;--bg:#ffe9d4;--surface:#fff;--line:#f0d8bf;--muted:#8a6b52;
   --brand:#e2640a;--brand-d:#b64f06;--alert:#dc2626;--alert-bg:#fef2f2;
   --warn:#c2710a;--warn-bg:#fff7ed;--ok:#16924f;--violet:#6d4bd1;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   background:var(--bg);color:var(--ink);min-height:100vh;
   max-width:560px;margin:0 auto;position:relative;
 }
@@ -3999,7 +3999,7 @@ function Estilos() {
 .vg-reag-hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
 .vg-reag-hist li{font-size:12px;line-height:1.5;color:#5a3a20;padding-bottom:6px;border-bottom:1px solid #f0d8c0}
 .vg-reag-hist li:last-child{border-bottom:none}
-.vg-reag-hist b{font-family:ui-monospace,monospace}
+.vg-reag-hist b{font-family:"JetBrains Mono",ui-monospace,"Courier New",monospace}
 .vg-reag-hist em{display:block;font-style:normal;font-size:10.5px;color:#9a7b60;margin-top:2px}
 .vg-check{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12.5px;color:#5a3a20;cursor:pointer}
 .vg-check input{width:17px;height:17px;accent-color:#e2640a}
