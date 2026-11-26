@@ -420,6 +420,7 @@ function App() {
       setCaixa(d.caixa || []);
       setConversas(Object.fromEntries((d.conversas || []).map((c) => [c.id, c])));
       setPropostas(d.propostas || []);
+      setRetornos(d.retornos || []);
       setFechamentos(d.fechamentos || []);
       setOrcamentos(d.orcamentos);
       setOrdens(d.ordens);
@@ -744,6 +745,16 @@ function App() {
     setCliAberto(null);
     setOsAberta({ novo: true, cliente: cli });
   };
+  // Retornos do CRM: ligar de volta, cobrar resposta, lembrar da manutenção.
+  const [retornos, setRetornos] = useState([]);
+  const salvarRetorno = (r) => {
+    const next = retornos.some((x) => x.id === r.id)
+      ? retornos.map((x) => (x.id === r.id ? r : x))
+      : [...retornos, r];
+    setRetornos(next);
+    salvarRegistros("retornos", [r]).catch(falhaAoSalvar);
+  };
+
   // Propostas comerciais: uma por orçamento, guardada com a versão que foi enviada.
   const [propostas, setPropostas] = useState([]);
   const propostaDe = (orcId) => propostas.find((x) => x.orcamentoId === orcId) || null;
@@ -1179,6 +1190,12 @@ function App() {
           fechamentos={fechamentos}
           conversas={conversas}
           onGuardarConversa={guardarConversa}
+          propostas={propostas}
+          retornos={retornos}
+          onSalvarCliente={(c) => salvarCliente(c, { silencioso: true })}
+          onSalvarRetorno={salvarRetorno}
+          onAbrirOrcamento={(o) => { setComandoAberto(false); setOrcAberto(o); }}
+          onAbrirOrdem={(o) => { setComandoAberto(false); setOsAberta(o); }}
           onLancarCaixa={lancarCaixa}
           onApagarCaixa={apagarCaixa}
           onFecharMes={fecharMes}

@@ -13,6 +13,7 @@ import PainelProspect, { buscarProspect, moverProspect, pausarProspect, pesquisa
 import PainelPoliticas from "./Politicas.jsx";
 import PainelCaixa, { resumoCaixa } from "./Caixa.jsx";
 import PainelMarketing, { buscarMarketing } from "./Marketing.jsx";
+import PainelCrm from "./Crm.jsx";
 import { memoriasDasPoliticas, situacaoDaValidade } from "./politicas.js";
 
 /* ============ Centro de Comando — área restrita do dono ============ */
@@ -169,7 +170,7 @@ function Painel({ icon, titulo, children, alerta, className = "" }) {
   );
 }
 
-export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, politicas, onSalvarPoliticas, caixa = [], fechamentos = [], conversas = {}, onGuardarConversa, onLancarCaixa, onApagarCaixa, onFecharMes, onReabrirMes, onToast, email, onFechar }) {
+export default function Comando({ orcamentos, ordens, clientes, cerebro = [], onSalvarMemoria, onExcluirMemoria, custosML = [], onSalvarCustoML, metaMargem = 35, vendedoras = [], acoesTron, cfgSenha, onDefinirSenha, politicas, onSalvarPoliticas, caixa = [], fechamentos = [], conversas = {}, onGuardarConversa, propostas = [], retornos = [], onSalvarCliente, onSalvarRetorno, onAbrirOrcamento, onAbrirOrdem, onLancarCaixa, onApagarCaixa, onFecharMes, onReabrirMes, onToast, email, onFechar }) {
   const [liberado, setLiberado] = useState(false);
   const [trocando, setTrocando] = useState(false);
   const [aba, setAba] = useState("geral");      // geral | tron | ml | cerebro | agentes
@@ -271,6 +272,11 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
 
   const ABAS = [
     { id: "geral", nome: "VISÃO GERAL", icon: <Activity size={14} />, badge: alertas || null, urgente: alertas > 0 },
+    { id: "crm", nome: "CRM / CLIENTES", icon: <Users size={14} />,
+      badge: (() => {
+        const n = retornos.filter((r) => (!r.situacao || r.situacao === "aberto") && r.data && r.data <= hoje).length;
+        return n || null;
+      })(), urgente: retornos.some((r) => (!r.situacao || r.situacao === "aberto") && r.data && r.data < hoje) },
     { id: "tron", nome: "TRON", icon: <Bot size={14} /> },
     { id: "ml", nome: "MERCADO LIVRE", icon: <ShoppingCart size={14} />, badge: ml?.anuncios?.ativos || null },
     { id: "prospect", nome: "PROSPECÇÃO", icon: <Target size={14} />,
@@ -537,6 +543,24 @@ export default function Comando({ orcamentos, ordens, clientes, cerebro = [], on
               politicas={politicas}
               onSalvar={onSalvarMemoria}
               onExcluir={onExcluirMemoria}
+              onToast={onToast}
+            />
+          </Painel>
+        )}
+
+        {aba === "crm" && (
+          <Painel icon={<Users size={14} />} titulo="CRM — clientes, atendimentos e retornos" className="cmd-cheio">
+            <PainelCrm
+              clientes={clientes}
+              orcamentos={orcamentos}
+              ordens={ordens}
+              propostas={propostas}
+              retornos={retornos}
+              quemSou={email}
+              onSalvarCliente={onSalvarCliente}
+              onSalvarRetorno={onSalvarRetorno}
+              onAbrirOrc={onAbrirOrcamento}
+              onAbrirOs={onAbrirOrdem}
               onToast={onToast}
             />
           </Painel>
