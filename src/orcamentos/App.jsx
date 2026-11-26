@@ -11,6 +11,7 @@ import Comando from "./Comando.jsx";
 import { buscarProspect, moverProspect, pausarProspect, pesquisarProspect, ROTULO_ESTAGIO as ROTULO_ESTAGIO_PROSPECT } from "./Prospect.jsx";
 import { lerPoliticas, politicasParaAgentes, situacaoDaValidade, textoGarantia, tipoGarantiaSugerido, venceEm } from "./politicas.js";
 import TelaProposta from "./Proposta.jsx";
+import PainelCrm from "./Crm.jsx";
 import { propostaDesatualizada } from "./proposta.js";
 import {
   carregarTudo, sincronizarLista, salvarRegistros, salvarConfig,
@@ -806,6 +807,7 @@ function App() {
   const [leadAberto, setLeadAberto] = useState(null);
   const [reagendando, setReagendando] = useState(null);   // { doc, tipo: "os" | "visita" }
   const [propostaAberta, setPropostaAberta] = useState(null);
+  const [novoClienteCrm, setNovoClienteCrm] = useState(0);   // muda para pedir ao CRM um cadastro novo
   useEffect(() => {
     if (papel !== "escritorio") return;
     let vivo = true;
@@ -1022,8 +1024,29 @@ function App() {
           />
         )}
         {view === "clientes" && (
-          <ListaClientes clientes={clientes} orcamentos={orcamentos} ordens={ordens} prospect={prospect}
-            onAbrir={setCliAberto} onAbrirLead={setLeadAberto} />
+          <div className="vg-page vg-crm-pagina">
+            <span className="vg-eyebrow">Clientes</span>
+            <h1 className="vg-h1">CRM</h1>
+            <PainelCrm
+              clientes={clientes}
+              orcamentos={orcamentos}
+              ordens={ordens}
+              propostas={propostas}
+              retornos={retornos}
+              prospect={prospect}
+              quemSou={meuNome || meuEmail}
+              onSalvarCliente={(c) => salvarCliente(c, { silencioso: true })}
+              onSalvarRetorno={salvarRetorno}
+              onAbrirOrc={setOrcAberto}
+              onAbrirOs={setOsAberta}
+              onNovoOrc={novoOrcParaCliente}
+              onNovaOs={novaOsParaCliente}
+              onLancarFeito={lancarServicoFeito}
+              onAbrirLead={setLeadAberto}
+              pedirNovo={novoClienteCrm}
+              onToast={setToast}
+            />
+          </div>
         )}
         {view === "orcamentos" && (
           <ListaOrcamentos orcamentos={orcamentos} clientes={clientes} ordens={ordens} onAbrir={setOrcAberto} />
@@ -1040,7 +1063,7 @@ function App() {
           className="vg-fab"
           onClick={() =>
             view === "servicos" ? setOsAberta({ novo: true })
-              : view === "clientes" ? setCliAberto({ novo: true })
+              : view === "clientes" ? setNovoClienteCrm(Date.now())
                 : setOrcAberto({ novo: true })
           }
           aria-label="Adicionar"

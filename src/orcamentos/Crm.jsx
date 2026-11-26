@@ -215,7 +215,7 @@ function NovoRetorno({ cliente, atendimentos, quemSou, onSalvar, onFechar }) {
 
 /* ===== ficha ===== */
 
-function Ficha({ cliente, dados, hoje, quemSou, onEditar, onRetorno, onInteracao, onConcluirRetorno, onAbrirOrc, onAbrirOs, onToast, onFechar }) {
+function Ficha({ cliente, dados, hoje, quemSou, onEditar, onRetorno, onInteracao, onConcluirRetorno, onAbrirOrc, onAbrirOs, onNovoOrc, onNovaOs, onLancarFeito, onToast, onFechar }) {
   const [aba, setAba] = useState("atendimentos");
   const [interacao, setInteracao] = useState({ meio: "whatsapp", texto: "" });
   const f = dados;
@@ -269,6 +269,20 @@ function Ficha({ cliente, dados, hoje, quemSou, onEditar, onRetorno, onInteracao
           <button className="crm-btn fantasma" onClick={() => onRetorno(cliente)}><CalendarClock size={15} /> Agendar retorno</button>
           <button className="crm-btn fantasma" onClick={() => onEditar(cliente)}>Editar cadastro</button>
         </div>
+
+        {(onNovoOrc || onNovaOs) && (
+          <div className="crm-acoes-topo">
+            {onNovoOrc && <button className="crm-btn fantasma" onClick={() => onNovoOrc(cliente)}>
+              <FileText size={15} /> Agendar visita
+            </button>}
+            {onNovaOs && <button className="crm-btn fantasma" onClick={() => onNovaOs(cliente)}>
+              <Wrench size={15} /> Novo serviço
+            </button>}
+            {onLancarFeito && <button className="crm-btn fantasma" onClick={() => onLancarFeito(cliente)}>
+              <CalendarClock size={15} /> Serviço que já foi feito
+            </button>}
+          </div>
+        )}
 
         <nav className="crm-abas-ficha">
           {[["atendimentos", `Atendimentos (${f.atendimentos.length})`],
@@ -404,16 +418,25 @@ function Ficha({ cliente, dados, hoje, quemSou, onEditar, onRetorno, onInteracao
 /* ===== painel ===== */
 
 export default function Crm({ clientes = [], orcamentos = [], ordens = [], propostas = [], retornos = [],
-  quemSou, onSalvarCliente, onSalvarRetorno, onAbrirOrc, onAbrirOs, onToast }) {
+  prospect, quemSou, onSalvarCliente, onSalvarRetorno, onAbrirOrc, onAbrirOs,
+  onNovoOrc, onNovaOs, onLancarFeito, onAbrirLead, pedirNovo, onToast }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
   const [aberta, setAberta] = useState(null);     // cliente da ficha
   const [editando, setEditando] = useState(null); // cliente em edição, ou {} para novo
   const [agendando, setAgendando] = useState(null);
-  const [vendo, setVendo] = useState("clientes"); // clientes | retornos
+  const [vendo, setVendo] = useState("clientes"); // clientes | retornos | prospectados
+  const leads = prospect?.leads || [];
 
   const grupos = useMemo(() => agruparRetornos(retornos, hoje), [retornos, hoje]);
+
+  // O botão + da tela principal pede um cadastro novo mudando este número.
+  const [ultimoPedido, setUltimoPedido] = useState(pedirNovo);
+  if (pedirNovo !== ultimoPedido) {
+    setUltimoPedido(pedirNovo);
+    if (pedirNovo) { setEditando({}); setVendo("clientes"); }
+  }
 
   const lista = useMemo(() => {
     let base = procurar(clientes, busca);
@@ -448,6 +471,11 @@ export default function Crm({ clientes = [], orcamentos = [], ordens = [], propo
               {grupos.atrasados.length + grupos.hoje.length}
             </i>
           </button>
+          {onAbrirLead && (
+            <button className={vendo === "prospectados" ? "on" : ""} onClick={() => setVendo("prospectados")}>
+              <Search size={14} /> Prospectados <i>{leads.length}</i>
+            </button>
+          )}
         </div>
         <button className="crm-btn" onClick={() => setEditando({})}><Plus size={15} /> Novo cliente</button>
       </div>
@@ -502,6 +530,27 @@ export default function Crm({ clientes = [], orcamentos = [], ordens = [], propo
             </ul>
           )}
         </>
+      ) : vendo === "prospectados" ? (
+        leads.length === 0 ? (
+          <p className="crm-dim">
+            Ninguém prospectado ainda. O TRON PROSPECT procura clientes novos toda manhã e eles
+            aparecem aqui — ainda não são clientes, é quem vale a pena procurar.
+          </p>
+        ) : (
+          <ul className="crm-lista">
+            {[...leads].sort((a, b) => (b.pontuacao || 0) - (a.pontuacao || 0)).map((l) => (
+              <li key={l.id} onClick={() => onAbrirLead(l)}>
+                <span className="crm-ini"><Building2 size={15} /></span>
+                <div className="crm-item-txt">
+                  <b>{l.nome}</b>
+                  <em>{l.bairro ? `${l.bairro} · ` : ""}{l.cidade} · {l.telefone || "sem telefone"}</em>
+                  <i>{l.servicoRecomendado || "a definir"}</i>
+                </div>
+                <span className={"crm-pin " + (l.prioridade === "alta" ? "hoje" : "")}>{l.pontuacao}</span>
+              </li>
+            ))}
+          </ul>
+        )
       ) : (
         <div className="crm-retornos">
           {[["atrasados", "Atrasados", grupos.atrasados], ["hoje", "Hoje", grupos.hoje],
@@ -544,6 +593,9 @@ export default function Crm({ clientes = [], orcamentos = [], ordens = [], propo
           onConcluirRetorno={concluirRetorno}
           onAbrirOrc={onAbrirOrc}
           onAbrirOs={onAbrirOs}
+          onNovoOrc={onNovoOrc}
+          onNovaOs={onNovaOs}
+          onLancarFeito={onLancarFeito}
           onToast={onToast}
           onFechar={() => setAberta(null)}
         />
